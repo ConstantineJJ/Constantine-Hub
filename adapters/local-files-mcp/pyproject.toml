@@ -12,6 +12,9 @@ dependencies = [
   "mcp>=2,<3",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
 [project.scripts]
 constantine-local-files-mcp = "local_files_mcp.server:main"
 

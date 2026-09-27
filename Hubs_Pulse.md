@@ -1,310 +1,246 @@
 # Constantine Hub — Project Pulse
 
-**Updated:** 2026-09-27  
-**Current phase:** PASS B — Blender lifecycle stabilization / Hub core preparation  
-**Repository:** `ConstantineJJ/Constantine-Hub`
+**Updated:** 2026-09-28  
+**Current phase:** PASS D — Godot MCP live integration  
+**Repository:** `ConstantineJJ/Constantine-Hub`  
+**Main head:** `354caf4c2a348cee6868e98b6c84bd6f0b88d687`
 
-## Current goal
+## Mission
 
-Build a stable local MCP control plane in this order:
+Build one expandable Windows control plane for independent MCP adapters. Hub owns local runtime orchestration, process lifecycle, tunnel health, logs, project-plugin installation and machine-local settings. `Tools_C` remains the canonical source of skills, contracts, workflows and QA policy.
 
-1. Local Files MCP;
-2. connect it to ChatGPT through Secure MCP Tunnel;
-3. use that local-file access to simplify further Hub development and diagnostics;
-4. stabilize/migrate Blender MCP_Con;
-5. build Constantine Hub core + GUI;
-6. rebuild Godot MCP_R independently from any Godot project;
-7. merge control of all bridges under one expandable Hub application.
+Current adapters:
 
-`my-lab-4-exp` is only a Godot target/laboratory and is not an infrastructure repository. The deleted Stickmans project is not a dependency.
+1. Local Files MCP — live;
+2. Blender MCP — live;
+3. Godot MCP — source + CI pass, live editor/runtime QA next.
 
----
-
-## Done — Local Files MCP v0.1 source
-
-Created `adapters/local-files-mcp/` with a Python MCP server based on the current official MCP Python SDK v2 line.
-
-Implemented MCP tools:
-
-- `files_server_info`
-- `files_roots`
-- `files_exists`
-- `files_stat`
-- `files_list`
-- `files_read_text`
-- `files_search_names`
-- `files_search_text`
-- `files_create_directory`
-- `files_write_text`
-- `files_edit_text`
-- `files_append_text`
-- `files_copy`
-- `files_move`
-- `files_delete`
-
-### Read/search behavior
-
-- absolute paths only;
-- explicit allowlisted roots;
-- list/tree with bounded entry count;
-- UTF-8 text reads with line ranges;
-- filename search;
-- text search with result and file-size limits;
-- recursive traversal does not follow reparse points.
-
-### Write behavior
-
-- create directories;
-- create/overwrite UTF-8 files;
-- atomic file replacement for write/edit;
-- exact edit precondition using expected replacement count;
-- optional backup before overwrite/edit;
-- append text;
-- copy files/directories;
-- move/rename;
-- explicit delete;
-- recursive directory deletion requires `recursive=true`.
-
-### Security / scope
-
-- no arbitrary shell, CMD, PowerShell, or process execution;
-- canonical path validation;
-- `..` escape rejected;
-- existing symlink/junction/reparse targets cannot escape allowed roots;
-- copy/move rejects directory trees containing reparse points;
-- allowed root itself cannot be deleted or moved destructively;
-- per-root permissions: `read`, `write`, `delete`;
-- bounded read/write/search sizes;
-- mutating operations write JSONL audit records without file contents;
-- API keys and machine-specific configuration stay outside Git.
-
-### Runtime/config
-
-Added:
-
-- `config.example.json`;
-- `%APPDATA%\ConstantineHub\local-files-mcp.json` as the default local config location;
-- `setup.ps1` for creating `.venv`, installing the package and creating the first local config;
-- `run_local_files_mcp.cmd` as a stdout-safe stdio launcher;
-- dedicated recommended tunnel health port `127.0.0.1:8081` so Blender can keep `8080`.
-
-### Tests / CI
-
-Added Windows unit tests for:
-
-- allowlist authorization;
-- outside-root rejection;
-- parent (`..`) escape rejection;
-- allowed-root destructive-operation guard;
-- create/read/edit/append/copy/move/delete round trip;
-- filename search;
-- text search;
-- explicit recursive-delete behavior;
-- current MCP Python SDK v2 server import/registration surface.
-
-Added `.github/workflows/local-files-mcp.yml` using `windows-latest`, Python 3.11, compile check and pytest.
-
-**CI PASS:** GitHub Actions run #1 passed compile + unit tests. Run #2 passed after adding the explicit MCP v2 server import test. Run #3 also passed after adding a real stdio MCP handshake / initialize / tool-registration test.
-
-**LIVE QA PASS:** `constantine-files` was initialized against tunnel `tunnel_6ab979e21ccc8191800a285fef498aa0`, Doctor returned `RESULT ok`, the tunnel started on `127.0.0.1:8081`, ChatGPT connected the plugin successfully, and end-to-end MCP calls were executed from ChatGPT. Verified live: server info, roots, create directory, write, read, exact edit with backup, append, copy, move/rename, text search, recursive list, and recursive delete. Test data was removed after QA. `E:\MyCreations` and `F:\My Lab` are currently configured with read/write/delete permissions. PASS A is accepted.
+`F:\My Lab\my-lab-4-exp` is only a Godot target/laboratory. Infrastructure must never depend on a disposable Godot project.
 
 ---
 
-## Important architecture decisions
+## Accepted architecture invariants
 
-### Constantine Hub and Tools_C stay separate for now
-
-`Constantine-Hub` owns:
-
-- MCP adapters;
-- bridge/tunnel runtime;
-- process lifecycle;
-- health and logs;
-- local adapter configuration;
-- future unified GUI.
-
-`Tools_C` remains the source for:
-
-- canonical skills;
-- contracts;
-- workflows;
-- QA gates;
-- reusable engineering policy.
-
-Do not duplicate ownership between the two repositories.
-
-### Local Files MCP is intentionally not a shell MCP
-
-File access and command execution remain separate capability classes. A future command-execution adapter, if ever added, requires its own explicit design and permissions.
-
-### First bootstrap is manual
-
-The first Local Files MCP connection is intentionally done through PowerShell and `tunnel-client` so the bridge can be proven before Hub automates it. After the Hub core exists, the same profile/process should be managed from the GUI.
-
-### Mandatory Local Files MCP settings UI
-
-When Local Files MCP is integrated into Constantine Hub, it must have a dedicated Settings window for its allowlist. The user must be able to:
-
-- add a folder with a native folder picker;
-- remove a configured folder;
-- see the canonical resolved path before saving;
-- independently toggle `read`, `write`, and `delete` permissions per root;
-- refuse duplicate canonical roots cleanly;
-- allow intentional nested roots, while warning that permissions are additive across overlapping roots and a nested rule cannot revoke a permission already granted by a parent root;
-- refuse invalid/reparse escape roots;
-- save to the machine-local Local Files MCP config, never to Git;
-- apply changes safely by validating the new config first and then restarting/reloading only the Local Files adapter if required.
-
-The Hub overview should show the number of allowed roots and whether write/delete access is enabled, but detailed path management belongs in the Local Files MCP Settings window.
+- Each adapter is technically independent even though one Hub controls it.
+- A compatible external tunnel may be adopted/read-only; Hub never kills a process it did not start.
+- Hub may stop only Hub-owned child processes.
+- API keys and machine-specific tunnel/profile state stay outside Git.
+- Local Files MCP does not expose arbitrary shell/PowerShell execution.
+- Project plugins are thin project-side bridges; servers/tunnels/launchers live in Constantine Hub.
+- `Tools_C` is canonical knowledge; deployed skill routers must not become an independent rule source.
+- Lower-level structural/CI success never substitutes for engine/runtime/visual QA.
 
 ---
 
-## Next immediate action — PASS B
+## PASS A — Local Files MCP — ACCEPTED
 
-Use the now-live Local Files MCP to inspect and stabilize `E:\MyCreations\Blender-MCP-Co` before extracting shared Hub runtime code.
+Implemented `adapters/local-files-mcp/` with read/search/create/edit/write/copy/move/delete operations inside explicit allowed roots.
 
-Immediate order:
+Security boundary:
 
-1. fix the Blender MCP_Con tunnel lifecycle bug where a failed/timed-out loopback TCP connect was treated as proof that another tunnel owned the port;
-2. keep strict protection against actually occupied/mismatched listeners;
-3. add startup verification/retry so `Start All` reports whether the child tunnel became ready instead of only spawning it;
-4. preserve app-owned process semantics: Hub/launcher may stop only the process it owns; compatible external tunnels are adopted/read-only and left untouched;
-5. record the stabilized behavior as the reference implementation for the future Constantine Hub tunnel/process manager;
-6. only then begin extracting shared Hub core/UI code.
+- canonical absolute paths;
+- `..` escape rejection;
+- reparse/junction escape protection;
+- per-root `read` / `write` / `delete` permissions;
+- destructive root guard;
+- bounded file/search sizes;
+- mutation audit log;
+- no arbitrary process execution.
 
----
+Live ChatGPT QA passed create/read/edit/append/copy/move/search/list/delete round trips.
 
-## PASS A acceptance
+Current machine roots:
 
-**PASS A ACCEPTED — 2026-09-27.**
+- `E:\MyCreations` — read/write/delete;
+- `F:\My Lab` — read/write/delete;
+- `D:\Desktop\Constantine Hub docs and backups` — read/write/delete.
 
-Observed through the actual ChatGPT connector:
-
-- server/plugin discovery succeeds;
-- `files_roots` works;
-- list/read/search work;
-- create/write/edit work;
-- directory creation works;
-- copy/move work;
-- delete works on test data;
-- the adapter runs on health port `8081` without conflicting with Blender on `8080`;
-- audit-backed mutation operations are active.
-
-Security boundary tests for outside-root and parent-escape behavior are covered by Local Files MCP unit/CI tests; platform policy may reject deliberately unsafe path probes before they reach the custom MCP, which is an additional outer protection layer rather than a server failure.
+Hub now owns the `constantine-files` tunnel successfully. Local Files Settings UI supports native Add Folder, Remove, canonical path display and independent Read/Write/Delete permissions. Saving a Hub-owned config restarts only that adapter; external/adopted tunnels are never killed automatically.
 
 ---
 
-## After PASS A
+## PASS B/C — Blender stabilization + Hub core — ACCEPTED FOR CURRENT USE
 
-1. use Local Files MCP for direct inspection of the local Blender MCP_Con source/runtime;
-2. fix its tunnel lifecycle bug and process ownership;
-3. extract common lifecycle/tunnel/logging code into Constantine Hub core;
-4. make Blender the first full Hub adapter;
-5. create Godot MCP_R + project plugin as a new independent adapter;
-6. add Godot project-plugin installation/update from Hub;
-7. add portable Windows build/release pipeline;
-8. hand unusually complex local integration/debug tasks to Codex when useful.
+Original Blender MCP_Con failure was localized: a failed TCP probe on health port 8080 was incorrectly treated as proof another tunnel occupied the port. Source patch 0.5.3 changed dead/non-accepting listener state to free while preserving mismatch protection.
 
-## Known open items
+The standalone launcher is no longer the preferred control path. Constantine Hub now manages Blender MCP directly through shared lifecycle code.
 
-- Local Files MCP currently depends on a manually started `tunnel-client run --profile constantine-files`; Hub must own this lifecycle later.
-- Local Files MCP settings are still JSON-only; Hub must provide the dedicated allowed-roots/permissions Settings window described above.
-- Blender MCP_Con source has been inspected and its lifecycle bug is localized; source fix/build/runtime regression QA are the current task.
-- Hub GUI/core has not started; current Constantine-Hub code is still the first adapter foundation only.
-- Godot MCP_R remains to be rebuilt independently from any Godot project.
+Live state verified 2026-09-28:
 
+- Blender running;
+- bridge `127.0.0.1:9876` connected;
+- `blender-local` tunnel started by Hub and reached ready;
+- direct ChatGPT `get_scene_info` succeeded against the live Blender scene;
+- 8/8 Blender skill routers verified.
 
----
+### Canonical skills/contracts verification
 
-## PASS B work started — Blender MCP_Con stabilization
+Live `Blender_MCP.read_skill("Blender_Character_Pipeline_Core")` resolved:
 
-Local inspection through the live Local Files MCP located the failure in `E:\MyCreations\Blender-MCP-Co\src\BlenderMCPCon`.
+- `canonical_root = E:\MyCreations\Tools_C`;
+- shared `docs/foundation.md` contract;
+- canonical Blender pipeline procedure;
+- canonical verification procedure.
 
-### Root cause localized
-
-`TunnelRuntime.ProbeAsync()` treated a timed-out loopback TCP connect as `TunnelState.Occupied`. `StartTunnelAsync()` then interpreted every non-`Free` result as evidence that another tunnel existed and refused to spawn `tunnel-client`, producing the observed `Cannot start another tunnel: Health port 8080 is not responding to a TCP probe.` message even when no tunnel-client process owned the port.
-
-### Local source patch applied
-
-- `TunnelRuntime.cs`: a health listener that does not accept a loopback TCP connection is now treated as `Free`; an actually accepting listener still goes through `/api/status` + `/readyz` identity verification before it can be adopted as `Running`.
-- `MainForm.cs`: after spawning app-owned `tunnel-client`, startup now polls readiness for up to 10 seconds and reports `Running`, early child exit, invalid profile, or readiness timeout explicitly.
-- Existing ownership rule preserved: only the app-owned child may be stopped; a compatible external tunnel is reused and left untouched by Stop.
-- Project version bumped from `0.5.2` to source version `0.5.3`.
-- Safety backups were created automatically beside the edited source files.
-
-### QA boundary
-
-The source patch has been reviewed structurally but has **not yet been compiled or cold-start regression-tested on Windows** because Local Files MCP intentionally has no shell/process execution capability. Do not replace the currently working `dist\BlenderMCPCon-v0.5.2\BlenderMCPCon.exe` until a `net10.0-windows` build and runtime test pass.
-
-Required regression sequence for 0.5.3:
-
-1. no tunnel-client running + port 8080 free -> `Start All` must spawn and reach ready;
-2. app-owned tunnel already running -> duplicate start suppressed;
-3. compatible external `blender-local` tunnel already running -> adopt/reuse, do not spawn a second child;
-4. unrelated process/listener on 8080 -> refuse start and do not kill it;
-5. child exits before readiness -> report failure rather than showing false Running;
-6. Stop Tunnel kills only the app-owned child;
-7. Blender bridge and 8/8 skill routing still pass after tunnel recovery.
-
+Important distinction: Hub's visible `8/8 verified` status validates deployed/source router parity. The live MCP skill-read path is what proves canonical Tools_C contract/context loading. Future UI polish may expose a separate `Contracts: canonical Tools_C OK` status.
 
 ---
 
-## PASS C started early — Constantine Hub v0.1 skeleton
+## Constantine Hub v0.1.2 state
 
-While Blender 0.5.3 waits for a Windows compile/runtime regression pass, the shared Hub foundation was started in parallel because Local Files MCP now provides direct local source access.
+Implemented .NET 10 WinForms Hub core:
 
-Created `apps/ConstantineHub/` as a .NET 10 WinForms application with:
+- adapter contract/state model;
+- tunnel-client discovery and profile loading;
+- health/identity/readiness verification;
+- startup wait + child-exit detection;
+- Hub-owned process tracking;
+- external/adopted process protection;
+- Doctor output;
+- shared log + Save Log;
+- Start All / Stop Hub-Owned;
+- system tray minimize/restore and tray actions;
+- supplied Constantine Hub icon.
 
-- reusable `IHubAdapter` state contract;
-- owned-process wrapper that only stops the child process it launched;
-- tunnel-client discovery (`CONSTANTINE_TUNNEL_CLIENT`, known local path, then PATH);
-- tunnel profile parsing from `%APPDATA%\tunnel-client`;
-- TCP + `/api/status` + `/readyz` identity verification;
-- generic tunnel adapter lifecycle with `Stopped`, `Starting`, `Running`, `External`, `Degraded`, `NotConfigured`, `Failed` states;
-- startup readiness wait and child-exit detection;
-- external/adopted tunnel protection: Hub never stops a tunnel it does not own;
-- Doctor support using an ephemeral health listener if the real tunnel is already running.
+Readability pass v0.1.2:
 
-### First dashboard
+- main non-log UI font increased ~50%;
+- status rows enlarged with vertical breathing room;
+- buttons/cards enlarged;
+- header enlarged;
+- log panel intentionally stays `Cascadia Mono 9.5 pt` for dense diagnostics.
 
-The first Hub UI now has three cards:
+Windows CI builds/publishes portable `win-x64` successfully.
 
-1. **Local Files MCP** — tunnel state, root count, access summary, Start/Stop/Restart/Doctor/Settings;
-2. **Blender MCP** — live Blender process / bridge `9876` / `blender-local` tunnel diagnostics, but lifecycle controls intentionally remain pending until Blender 0.5.3 regression QA;
-3. **Godot MCP** — explicit rebuild-pending placeholder.
+---
 
-A shared log panel, Refresh and Save Log are included.
+## PASS D — Godot MCP rebuild — SOURCE + CI PASS
 
-### Local Files Settings window implemented
+Godot was rebuilt from scratch as an independent adapter under `adapters/godot-mcp/`.
 
-The requested Local Files MCP folder-management window now exists in source:
+### MCP server
 
-- native `FolderBrowserDialog` Add Folder;
-- Remove selected root;
-- canonical path displayed in the grid;
-- independent Read / Write / Delete checkboxes;
-- duplicate canonical root rejection;
-- nested-root warning explaining additive permission semantics;
-- explicit warning before saving any Delete permission;
-- preserves the rest of the existing JSON config and replaces only `allowed_roots`;
-- atomic-ish temp + `File.Replace` save with `.bak` backup;
-- settings remain machine-local under `%APPDATA%\ConstantineHub`, never Git;
-- when Hub owns the Local Files tunnel, saving settings can restart only that adapter; if the tunnel is external/adopted, Hub refuses to kill it and asks for a one-time external restart.
+Python stdio MCP server now preserves the previous Godot_MCP_R public capabilities:
 
-### Repository / CI
+- status;
+- editor/runtime scene tree;
+- node inspect/create/set/delete;
+- attach script;
+- save/open scene;
+- project file list/read/write;
+- managed project run/stop/output/errors;
+- runtime screenshot capture;
+- Input Map action injection;
+- bounded public node method calls;
+- Git status/diff/log/explicit-path commit/push;
+- safe extended editor catalogue/call.
 
-The Hub source and first settings UI were also written to `ConstantineJJ/Constantine-Hub` on GitHub. A new Windows workflow `.github/workflows/constantine-hub.yml` builds `.NET 10` and publishes a portable `win-x64` artifact. First CI run is pending at the time of this entry.
+Added canonical workflow tools:
 
-### Hub CI result
+- `godot_list_skills`;
+- `godot_read_skill`;
+- `godot_get_skill_context`.
 
-First Constantine Hub workflow run found one compile error: the `TunnelProfile` record property named `Path` shadowed `System.IO.Path` inside its static loader. The record field was renamed to `ProfilePath`.
+Canonical Godot context requires:
 
-Second workflow run **PASS**:
+- `Tools_C/docs/foundation.md`;
+- `Tools_C/skills/godot-project/SKILL.md`;
+- `Tools_C/skills/godot-asset-integration/SKILL.md`;
+- `Tools_C/skills/verification/SKILL.md`.
 
-- .NET 10 setup PASS;
-- restore PASS;
-- Release build PASS;
-- portable `win-x64` publish PASS;
-- artifact upload PASS.
+### Godot project plugin
 
-Artifact: `ConstantineHub-win-x64` (workflow run `36351275578`, head `0564c1dd13ca79e47ad2358bfa193d782c78aa0f`). Source now has a green Windows compile/publish gate; runtime GUI QA on the user machine is still pending.
+Created `project-addon/addons/constantine_mcp/`:
+
+- `plugin.cfg`;
+- `constantine_mcp_plugin.gd`;
+- editor TCP JSON-line bridge on `127.0.0.1:6262`;
+- runtime/autoload bridge on `127.0.0.1:6263`;
+- JSON-safe Godot Variant codec.
+
+The editor bridge supports scene/node editing and bounded editor operations. The runtime bridge supports runtime inspection, screenshot capture, input actions and bounded node calls.
+
+Normal editor/plugin teardown deliberately does **not** remove the runtime autoload; installation/removal ownership belongs to Hub.
+
+### Hub Godot adapter
+
+Created `apps/ConstantineHub/Adapters/Godot/` with:
+
+- machine-local `%APPDATA%\ConstantineHub\godot-mcp.json`;
+- target project validation;
+- Godot executable discovery;
+- addon install/update into the selected project;
+- preservation of existing `[editor_plugins]` entries;
+- canonical Tools_C skills/contracts verification before start;
+- first-run Python venv provisioning;
+- optional Godot editor launch;
+- editor/runtime bridge diagnostics;
+- tunnel lifecycle through shared Hub core.
+
+Current first-pass target defaults:
+
+- project: `F:\My Lab\my-lab-4-exp`;
+- tunnel profile: `godot-local`;
+- reused existing ChatGPT Godot tunnel ID: `tunnel_6aa32f76e3f881919f5757c792036950`;
+- health port: `8082`;
+- editor bridge: `6262`;
+- runtime bridge: `6263`.
+
+Hub Godot card now shows Project / Plugin / Editor bridge / Runtime bridge / Tunnel / Skills-contracts and exposes Start / Stop / Restart / Install Plugin / Doctor.
+
+### Godot CI
+
+PR #2 first smoke found only a test API-name mismatch (`CallToolResult.is_error`, not `isError`). Runtime code did not require a fix.
+
+Corrected run PASS:
+
+- package install;
+- Python compileall;
+- real stdio MCP initialize;
+- list_tools;
+- real tool calls;
+- all 29 expected Godot tools registered;
+- `res://../` traversal regression blocked;
+- project-addon payload present;
+- Hub .NET restore/build/publish;
+- published Hub artifact contains Godot launcher + addon.
+
+PR #2 was squash-merged to `main` as `354caf4c2a348cee6868e98b6c84bd6f0b88d687`.
+
+Main post-merge workflows PASS:
+
+- Godot MCP run `36358032931`;
+- Constantine Hub run `36358032965`.
+
+Artifact `ConstantineHub-win-x64` from main includes the Godot adapter.
+
+---
+
+## Current open gate — LIVE GODOT QA
+
+Do not mark Godot accepted until actual Godot 4.7 evidence passes.
+
+Next sequence:
+
+1. run the new main artifact;
+2. Hub installs/enables `Constantine MCP` in `F:\My Lab\my-lab-4-exp`;
+3. reload/restart the Godot project once if needed so the editor plugin activates;
+4. confirm editor bridge `127.0.0.1:6262`;
+5. Hub creates/reuses `godot-local` with health port 8082 and the existing Godot tunnel ID;
+6. existing ChatGPT `Godot_MCP_R` connector should become live again;
+7. call `godot_status`;
+8. verify `godot_list_skills` / `godot_get_skill_context` resolves canonical Tools_C;
+9. scene-tree read;
+10. create a temporary node, inspect/set it, then delete it;
+11. save/open scene test only on disposable QA scene;
+12. run project, confirm runtime bridge 6263;
+13. capture game screenshot and test a safe Input Map action if one exists;
+14. review Godot Output/errors and close regressions;
+15. only then accept Godot PASS D.
+
+## Known follow-ups after Godot live PASS
+
+- add dedicated Godot Settings UI with project picker, tunnel/profile fields and auto-launch toggle instead of relying on the first-pass default config;
+- expose a separate canonical-contract status for Blender in Hub;
+- retire standalone Blender MCP_Con after sufficient Hub cold-start/restart QA;
+- add release packaging/patch/update ergonomics after adapter behavior stabilizes.

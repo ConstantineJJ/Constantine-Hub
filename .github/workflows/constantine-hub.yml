@@ -5,10 +5,12 @@ on:
     branches: [main]
     paths:
       - 'apps/ConstantineHub/**'
+      - 'adapters/godot-mcp/**'
       - '.github/workflows/constantine-hub.yml'
   pull_request:
     paths:
       - 'apps/ConstantineHub/**'
+      - 'adapters/godot-mcp/**'
       - '.github/workflows/constantine-hub.yml'
 
 jobs:
@@ -30,6 +32,13 @@ jobs:
 
       - name: Publish portable win-x64
         run: dotnet publish apps/ConstantineHub/ConstantineHub.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o artifacts/ConstantineHub-win-x64
+
+      - name: Verify bundled Godot adapter
+        shell: pwsh
+        run: |
+          $root = 'artifacts/ConstantineHub-win-x64/adapters/godot-mcp'
+          if (-not (Test-Path "$root/run_godot_mcp.cmd")) { throw 'Godot MCP launcher was not bundled.' }
+          if (-not (Test-Path "$root/project-addon/addons/constantine_mcp/plugin.cfg")) { throw 'Godot addon was not bundled.' }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

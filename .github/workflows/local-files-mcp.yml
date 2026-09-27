@@ -7,6 +7,8 @@ on:
       - ".github/workflows/local-files-mcp.yml"
   pull_request:
     paths:
+      - "apps/ConstantineHub/**"
+      - "tests/ConstantineHub.LayoutTests/**"
       - "adapters/local-files-mcp/**"
       - ".github/workflows/local-files-mcp.yml"
 

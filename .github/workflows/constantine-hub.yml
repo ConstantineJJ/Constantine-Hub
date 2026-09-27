@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - 'apps/ConstantineHub/**'
+      - 'tests/ConstantineHub.LayoutTests/**'
       - 'adapters/godot-mcp/**'
       - '.github/workflows/constantine-hub.yml'
   pull_request:
     paths:
       - 'apps/ConstantineHub/**'
+      - 'tests/ConstantineHub.LayoutTests/**'
       - 'adapters/godot-mcp/**'
       - '.github/workflows/constantine-hub.yml'
 
@@ -29,6 +31,19 @@ jobs:
 
       - name: Build
         run: dotnet build apps/ConstantineHub/ConstantineHub.csproj -c Release --no-restore
+
+      - name: Verify font and DPI layout
+        run: dotnet run --project tests/ConstantineHub.LayoutTests -c Release -- artifacts/layout
+
+      - name: Verify native monitor layout
+        run: dotnet run --project tests/ConstantineHub.LayoutTests -c Release -- artifacts/layout --native
+
+      - name: Upload layout evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ConstantineHub-layout-evidence
+          path: artifacts/layout
+          if-no-files-found: error
 
       - name: Publish portable win-x64
         run: dotnet publish apps/ConstantineHub/ConstantineHub.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o artifacts/ConstantineHub-win-x64

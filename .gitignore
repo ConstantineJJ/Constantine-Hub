@@ -16,6 +16,7 @@ __pycache__/
 *.jsonl
 
 # Build artifacts
+artifacts/
 dist/
 build/
 bin/

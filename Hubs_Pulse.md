@@ -1,7 +1,7 @@
 # Constantine Hub — Project Pulse
 
 **Updated:** 2026-09-27  
-**Current phase:** PASS A — Local Files MCP v0.1  
+**Current phase:** PASS B — Blender lifecycle stabilization / Hub core preparation  
 **Repository:** `ConstantineJJ/Constantine-Hub`
 
 ## Current goal
@@ -104,7 +104,9 @@ Added Windows unit tests for:
 
 Added `.github/workflows/local-files-mcp.yml` using `windows-latest`, Python 3.11, compile check and pytest.
 
-**CI PASS:** GitHub Actions run #1 passed compile + unit tests. Run #2 also passed after adding the explicit MCP v2 server import test. This proves the package installs and the current `MCPServer` integration imports on Windows CI. It does **not** yet prove the real Secure MCP Tunnel / ChatGPT connector path.
+**CI PASS:** GitHub Actions run #1 passed compile + unit tests. Run #2 passed after adding the explicit MCP v2 server import test. Run #3 also passed after adding a real stdio MCP handshake / initialize / tool-registration test.
+
+**LIVE QA PASS:** `constantine-files` was initialized against tunnel `tunnel_6ab979e21ccc8191800a285fef498aa0`, Doctor returned `RESULT ok`, the tunnel started on `127.0.0.1:8081`, ChatGPT connected the plugin successfully, and end-to-end MCP calls were executed from ChatGPT. Verified live: server info, roots, create directory, write, read, exact edit with backup, append, copy, move/rename, text search, recursive list, and recursive delete. Test data was removed after QA. `E:\MyCreations` and `F:\My Lab` are currently configured with read/write/delete permissions. PASS A is accepted.
 
 ---
 
@@ -139,31 +141,43 @@ File access and command execution remain separate capability classes. A future c
 
 The first Local Files MCP connection is intentionally done through PowerShell and `tunnel-client` so the bridge can be proven before Hub automates it. After the Hub core exists, the same profile/process should be managed from the GUI.
 
----
+### Mandatory Local Files MCP settings UI
 
-## Next immediate action — user machine
+When Local Files MCP is integrated into Constantine Hub, it must have a dedicated Settings window for its allowlist. The user must be able to:
 
-Clone/update `Constantine-Hub`, then from:
+- add a folder with a native folder picker;
+- remove a configured folder;
+- see the canonical resolved path before saving;
+- independently toggle `read`, `write`, and `delete` permissions per root;
+- refuse duplicate/nested-conflicting entries cleanly;
+- refuse invalid/reparse escape roots;
+- save to the machine-local Local Files MCP config, never to Git;
+- apply changes safely by validating the new config first and then restarting/reloading only the Local Files adapter if required.
 
-```text
-adapters\local-files-mcp
-```
-
-run `setup.ps1`, inspect `%APPDATA%\ConstantineHub\local-files-mcp.json`, create a new OpenAI tunnel/runtime key, initialize profile `constantine-files` with health port `8081`, run Doctor, start the tunnel, and connect it to ChatGPT.
-
-Use a disposable test root first, for example:
-
-```text
-E:\MyCreations\ConstantineHub_MCP_Test
-```
-
-Do not begin real working-directory edits until end-to-end create/read/edit/move/delete tests pass through ChatGPT.
+The Hub overview should show the number of allowed roots and whether write/delete access is enabled, but detailed path management belongs in the Local Files MCP Settings window.
 
 ---
 
-## Acceptance boundary for PASS A
+## Next immediate action — PASS B
 
-PASS A is complete only after all of these are observed through the actual ChatGPT connector:
+Use the now-live Local Files MCP to inspect and stabilize `E:\MyCreations\Blender-MCP-Co` before extracting shared Hub runtime code.
+
+Immediate order:
+
+1. fix the Blender MCP_Con tunnel lifecycle bug where a failed/timed-out loopback TCP connect was treated as proof that another tunnel owned the port;
+2. keep strict protection against actually occupied/mismatched listeners;
+3. add startup verification/retry so `Start All` reports whether the child tunnel became ready instead of only spawning it;
+4. preserve app-owned process semantics: Hub/launcher may stop only the process it owns; compatible external tunnels are adopted/read-only and left untouched;
+5. record the stabilized behavior as the reference implementation for the future Constantine Hub tunnel/process manager;
+6. only then begin extracting shared Hub core/UI code.
+
+---
+
+## PASS A acceptance
+
+**PASS A ACCEPTED — 2026-09-27.**
+
+Observed through the actual ChatGPT connector:
 
 - server/plugin discovery succeeds;
 - `files_roots` works;
@@ -172,13 +186,10 @@ PASS A is complete only after all of these are observed through the actual ChatG
 - directory creation works;
 - copy/move work;
 - delete works on test data;
-- outside-root access is denied;
-- `..` escape is denied;
-- audit log contains mutation records;
-- tunnel restart does not corrupt the profile;
-- no conflict with Blender tunnel on port 8080.
+- the adapter runs on health port `8081` without conflicting with Blender on `8080`;
+- audit-backed mutation operations are active.
 
-Until then the current status is **SOURCE + WINDOWS CI PASS / LIVE QA PENDING**.
+Security boundary tests for outside-root and parent-escape behavior are covered by Local Files MCP unit/CI tests; platform policy may reject deliberately unsafe path probes before they reach the custom MCP, which is an additional outer protection layer rather than a server failure.
 
 ---
 
@@ -195,6 +206,41 @@ Until then the current status is **SOURCE + WINDOWS CI PASS / LIVE QA PENDING**.
 
 ## Known open items
 
-- No live Secure MCP Tunnel exists yet for Local Files MCP.
-- No ChatGPT end-to-end file mutation has been executed yet.
-- Hub GUI/core has not started; current code is the first adapter foundation only.
+- Local Files MCP currently depends on a manually started `tunnel-client run --profile constantine-files`; Hub must own this lifecycle later.
+- Local Files MCP settings are still JSON-only; Hub must provide the dedicated allowed-roots/permissions Settings window described above.
+- Blender MCP_Con source has been inspected and its lifecycle bug is localized; source fix/build/runtime regression QA are the current task.
+- Hub GUI/core has not started; current Constantine-Hub code is still the first adapter foundation only.
+- Godot MCP_R remains to be rebuilt independently from any Godot project.
+
+
+---
+
+## PASS B work started — Blender MCP_Con stabilization
+
+Local inspection through the live Local Files MCP located the failure in `E:\MyCreations\Blender-MCP-Co\src\BlenderMCPCon`.
+
+### Root cause localized
+
+`TunnelRuntime.ProbeAsync()` treated a timed-out loopback TCP connect as `TunnelState.Occupied`. `StartTunnelAsync()` then interpreted every non-`Free` result as evidence that another tunnel existed and refused to spawn `tunnel-client`, producing the observed `Cannot start another tunnel: Health port 8080 is not responding to a TCP probe.` message even when no tunnel-client process owned the port.
+
+### Local source patch applied
+
+- `TunnelRuntime.cs`: a health listener that does not accept a loopback TCP connection is now treated as `Free`; an actually accepting listener still goes through `/api/status` + `/readyz` identity verification before it can be adopted as `Running`.
+- `MainForm.cs`: after spawning app-owned `tunnel-client`, startup now polls readiness for up to 10 seconds and reports `Running`, early child exit, invalid profile, or readiness timeout explicitly.
+- Existing ownership rule preserved: only the app-owned child may be stopped; a compatible external tunnel is reused and left untouched by Stop.
+- Project version bumped from `0.5.2` to source version `0.5.3`.
+- Safety backups were created automatically beside the edited source files.
+
+### QA boundary
+
+The source patch has been reviewed structurally but has **not yet been compiled or cold-start regression-tested on Windows** because Local Files MCP intentionally has no shell/process execution capability. Do not replace the currently working `dist\BlenderMCPCon-v0.5.2\BlenderMCPCon.exe` until a `net10.0-windows` build and runtime test pass.
+
+Required regression sequence for 0.5.3:
+
+1. no tunnel-client running + port 8080 free -> `Start All` must spawn and reach ready;
+2. app-owned tunnel already running -> duplicate start suppressed;
+3. compatible external `blender-local` tunnel already running -> adopt/reuse, do not spawn a second child;
+4. unrelated process/listener on 8080 -> refuse start and do not kill it;
+5. child exits before readiness -> report failure rather than showing false Running;
+6. Stop Tunnel kills only the app-owned child;
+7. Blender bridge and 8/8 skill routing still pass after tunnel recovery.

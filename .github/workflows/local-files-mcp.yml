@@ -1,0 +1,36 @@
+name: Local Files MCP
+
+on:
+  push:
+    paths:
+      - "adapters/local-files-mcp/**"
+      - ".github/workflows/local-files-mcp.yml"
+  pull_request:
+    paths:
+      - "adapters/local-files-mcp/**"
+      - ".github/workflows/local-files-mcp.yml"
+
+jobs:
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: adapters/local-files-mcp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: adapters/local-files-mcp/pyproject.toml
+
+      - name: Install
+        run: python -m pip install -e ".[test]"
+
+      - name: Compile
+        run: python -m compileall -q src tests
+
+      - name: Unit tests
+        run: python -m pytest -q

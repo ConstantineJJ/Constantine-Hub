@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Local secrets and machine-specific configuration
+.env
+.env.*
+*.local.json
+*.local.yaml
+*.local.yml
+
+# Local runtime logs
+*.log
+*.jsonl
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

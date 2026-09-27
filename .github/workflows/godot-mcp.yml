@@ -7,6 +7,8 @@ on:
       - ".github/workflows/godot-mcp.yml"
   pull_request:
     paths:
+      - "apps/ConstantineHub/**"
+      - "tests/ConstantineHub.LayoutTests/**"
       - "adapters/godot-mcp/**"
       - ".github/workflows/godot-mcp.yml"
 

@@ -7,9 +7,9 @@ namespace ConstantineHub;
 
 internal sealed class MainForm : Form
 {
-    private readonly LocalFilesAdapter _localFiles = new();
-    private readonly BlenderAdapter _blender = new();
-    private readonly GodotAdapter _godot = new();
+    private readonly LocalFilesAdapter _localFiles = null!;
+    private readonly BlenderAdapter _blender = null!;
+    private readonly GodotAdapter _godot = null!;
     private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 1500 };
     private readonly RichTextBox _log = new();
     private readonly NotifyIcon _trayIcon = new();
@@ -37,19 +37,28 @@ internal sealed class MainForm : Form
     private static readonly Color Warn = Color.FromArgb(232, 188, 104);
     private static readonly Color Muted = Color.FromArgb(170, 174, 184);
 
-    internal MainForm()
+    internal MainForm(bool layoutPreview = false)
     {
+        SuspendLayout();
         Text = "Constantine Hub";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(1100, 1120);
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        MinimumSize = new Size(900, 720);
         Size = new Size(1280, 1200);
         BackColor = Color.FromArgb(22, 24, 29);
         ForeColor = Color.Gainsboro;
         Font = new Font("Segoe UI", 15F);
-        AutoScaleMode = AutoScaleMode.Dpi;
         Icon = AppIconProvider.Current;
 
         BuildUi();
+        ResumeLayout(performLayout: true);
+        // The layout harness renders the production controls without settings, probes or processes.
+        if (layoutPreview)
+            return;
+        _localFiles = new LocalFilesAdapter();
+        _blender = new BlenderAdapter();
+        _godot = new GodotAdapter();
         ConfigureTray();
 
         _localFiles.LogLine += LogFromAnyThread;
@@ -91,29 +100,48 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(20),
             ColumnCount = 1,
-            RowCount = 6
+            RowCount = 3
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 286));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 320));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        // Keep the compact log viewport independent of card/font growth (420 px at 150%).
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 280));
         Controls.Add(root);
+
+        var viewport = new CardViewport { Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty };
+        var cards = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 4,
+            Margin = Padding.Empty
+        };
+        cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (var i = 0; i < cards.RowCount; i++)
+            cards.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        viewport.Controls.Add(cards);
+        // Keep the scroll extent tied to the complete content after font/window changes.
+        cards.SizeChanged += (_, _) => viewport.AutoScrollMinSize = new Size(0, cards.Height);
+        root.Controls.Add(viewport, 0, 0);
 
         var header = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
             RowCount = 2,
-            Margin = Padding.Empty
+            Margin = new Padding(0, 0, 0, 10)
         };
-        header.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
-        header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        header.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         header.Controls.Add(new Label
         {
             Text = "Constantine Hub",
             Font = new Font("Segoe UI Semibold", 28F),
+            AutoSize = true,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true
@@ -122,30 +150,33 @@ internal sealed class MainForm : Form
         {
             Text = $"Local MCP control plane  •  v{GetDisplayVersion()}",
             Font = new Font("Segoe UI", 13F),
+            AutoSize = true,
             ForeColor = Muted,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.TopLeft,
             AutoEllipsis = true,
             Padding = new Padding(3, 0, 0, 0)
         }, 0, 1);
-        root.Controls.Add(header, 0, 0);
+        cards.Controls.Add(header, 0, 0);
 
-        root.Controls.Add(BuildLocalFilesCard(), 0, 1);
-        root.Controls.Add(BuildBlenderCard(), 0, 2);
-        root.Controls.Add(BuildGodotCard(), 0, 3);
+        cards.Controls.Add(BuildLocalFilesCard(), 0, 1);
+        cards.Controls.Add(BuildBlenderCard(), 0, 2);
+        cards.Controls.Add(BuildGodotCard(), 0, 3);
 
         var globalActions = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Padding = new Padding(0, 4, 0, 4)
         };
         globalActions.Controls.Add(MakeButton("Start All", async (_, _) => await StartAllAsync(), primary: true));
         globalActions.Controls.Add(MakeButton("Stop Managed", async (_, _) => await StopAllOwnedAsync()));
         globalActions.Controls.Add(MakeButton("Refresh", async (_, _) => await RefreshStatusAsync()));
         globalActions.Controls.Add(MakeButton("Save Log", (_, _) => SaveLog()));
-        root.Controls.Add(globalActions, 0, 4);
+        root.Controls.Add(globalActions, 0, 1);
 
         _log.Dock = DockStyle.Fill;
         _log.ReadOnly = true;
@@ -154,7 +185,7 @@ internal sealed class MainForm : Form
         _log.BorderStyle = BorderStyle.FixedSingle;
         _log.Font = new Font("Cascadia Mono", 9.5F);
         _log.WordWrap = false;
-        root.Controls.Add(_log, 0, 5);
+        root.Controls.Add(_log, 0, 2);
     }
 
     private Control BuildLocalFilesCard()
@@ -205,34 +236,33 @@ internal sealed class MainForm : Form
         return card;
     }
 
-    private static Panel BuildCard(
+    private static TableLayoutPanel BuildCard(
         string title,
         int statusRows,
         out TableLayoutPanel content,
         out FlowLayoutPanel actions)
     {
-        var card = new Panel
+        var card = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 1,
+            RowCount = 3,
             BackColor = Color.FromArgb(30, 33, 40),
             Padding = new Padding(16),
             Margin = new Padding(0, 0, 0, 10)
         };
 
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 3
-        };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-        card.Controls.Add(layout);
+        card.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (var i = 0; i < card.RowCount; i++)
+            card.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        layout.Controls.Add(new Label
+        card.Controls.Add(new Label
         {
             Text = title,
+            AutoSize = true,
+            Margin = new Padding(3, 4, 3, 8),
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI Semibold", 15F),
             ForeColor = Color.White,
@@ -242,27 +272,62 @@ internal sealed class MainForm : Form
 
         content = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
             RowCount = statusRows,
             Margin = Padding.Empty
         };
-        content.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 205));
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (var i = 0; i < statusRows; i++)
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-        layout.Controls.Add(content, 0, 1);
+            content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        card.Controls.Add(content, 0, 1);
 
-        actions = new FlowLayoutPanel
+        actions = new ActionPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            AutoScroll = true,
+            WrapContents = true,
             Padding = new Padding(0, 8, 0, 0)
         };
-        layout.Controls.Add(actions, 0, 2);
+        card.Controls.Add(actions, 0, 2);
         return card;
+    }
+
+    private sealed class ActionPanel : FlowLayoutPanel
+    {
+        // TableLayoutPanel can ask auto rows for a preferred size at width=1.
+        // Measure wrapping at the allocated width so a single row does not reserve two rows.
+        public override Size GetPreferredSize(Size proposedSize)
+            => base.GetPreferredSize(new Size(proposedSize.Width <= 1 ? Width : proposedSize.Width, 0));
+    }
+
+    private sealed class CardViewport : Panel
+    {
+        private Control? _lastFocusedControl;
+
+        protected override void OnLeave(EventArgs e)
+        {
+            _lastFocusedControl = null;
+            base.OnLeave(e);
+        }
+
+        protected override Point ScrollToControl(Control activeControl)
+        {
+            // Status/font relayout must not undo a user's scroll by following the same
+            // focused button again. A new keyboard focus still scrolls into view normally.
+            if (activeControl == FindForm()?.ActiveControl)
+            {
+                if (activeControl == _lastFocusedControl)
+                    return DisplayRectangle.Location;
+                _lastFocusedControl = activeControl;
+            }
+            return base.ScrollToControl(activeControl);
+        }
     }
 
     private static void AddStatusRow(TableLayoutPanel table, int row, string name, Label value)
@@ -270,6 +335,7 @@ internal sealed class MainForm : Form
         table.Controls.Add(new Label
         {
             Text = name,
+            AutoSize = true,
             Dock = DockStyle.Fill,
             ForeColor = Color.Silver,
             TextAlign = ContentAlignment.MiddleLeft,
@@ -277,6 +343,7 @@ internal sealed class MainForm : Form
             Margin = new Padding(3, 4, 6, 4)
         }, 0, row);
 
+        value.AutoSize = true;
         value.Dock = DockStyle.Fill;
         value.Text = "● Checking…";
         value.ForeColor = Muted;
@@ -291,9 +358,10 @@ internal sealed class MainForm : Form
         var button = new Button
         {
             Text = text,
-            Width = text.Length > 10 ? 190 : 145,
-            Height = 46,
-            Margin = new Padding(0, 0, 10, 0),
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Padding = new Padding(16, 6, 16, 6),
+            Margin = new Padding(0, 0, 10, 4),
             FlatStyle = FlatStyle.Flat,
             BackColor = primary ? Color.FromArgb(55, 106, 175) : Color.FromArgb(42, 46, 55),
             ForeColor = Color.White

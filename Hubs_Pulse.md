@@ -1,9 +1,9 @@
 # Constantine Hub — Project Pulse
 
 **Updated:** 2026-09-28  
-**Current phase:** PASS D — Godot MCP live integration  
+**Current phase:** v0.1.3 layout correction; PASS D live runtime gate remains open
 **Repository:** `ConstantineJJ/Constantine-Hub`  
-**Main head:** `354caf4c2a348cee6868e98b6c84bd6f0b88d687`
+**Layout fix base:** main `ef42e67eb05778f1a82d628a7c3611816ed90ee9`
 
 ## Mission
 
@@ -86,7 +86,63 @@ Important distinction: Hub's visible `8/8 verified` status validates deployed/so
 
 ---
 
-## Constantine Hub v0.1.2 state
+## Constantine Hub v0.1.3 — font/DPI layout correction
+
+Evidence: supplied `Constantine-Hub-log-2026-09-28_023019.md` and screenshots
+`022718`, `022842`, `023031`. Local v0.1.2 MainForm matches main's layout (only
+an unrelated tray catch comment differs). The existing local checkout is dirty
+and hosts deployed files; work was isolated in a fresh main clone.
+
+Root cause: fixed 36-pixel rows minus 8 pixels of vertical margins leave only
+28 pixels for 15 pt text, which grows beyond that at higher DPI/text scaling.
+Fixed card heights also constrain a percentage-sized content region: Godot's
+six 36-pixel rows need 216 pixels, but its 320-pixel card leaves only 182 after
+outer spacing, padding, title and actions. The final Skills/contracts row was
+hidden. Fixed button sizes also clipped captions. Dpi mode alone cannot make
+these mutually inconsistent constraints fit; the form lacked an explicit
+96-DPI design baseline. Construction now suspends layout until the full control
+tree exists, preventing initial DPI scaling from being consumed before cards
+and the log row have been added.
+
+Changes:
+
+- AutoSize rows, content, titles and cards; sufficient margins/padding.
+- Label column measures its text; button sizes measure their captions and padding.
+- Wrapped actions measure at the allocated width, avoiding spurious empty rows.
+- Explicit 96-DPI baseline and PerMonitorV2 application mode.
+- Card viewport scrolls when the window cannot fit all content.
+- Relayout preserves user scrolling instead of snapping back to the already
+  focused action; changing keyboard focus still reveals the new action.
+- Log keeps Cascadia Mono 9.5 pt, colors and no-wrap behavior; a separate
+  280-logical-pixel row preserves approximately the supplied 420-pixel viewport
+  at 150% and is unaffected by growing cards or UI fonts.
+- Godot Pass 1, adapters, profile handling and process ownership code unchanged.
+
+Validation:
+
+- PASS: Release build/publish; Godot launcher and addon bundled.
+- PASS: 24 native WinForms geometry/render cases (simulated DPI 100/125/150/200%,
+  15/18/22.5 pt, narrow/wide windows), including long status refreshes and scrolling.
+- PASS: current-monitor PerMonitorV2 layout at actual 144 DPI (150%), including
+  a live font/width change; native rendered PNGs inspected.
+- PASS: Godot stdio initialize/list/call, all 29 tools; Local Files 9 tests.
+- PASS: GitHub CI for `f262734480a8d7889758cfb25662a759ae50ec20` in
+  [PR #3](https://github.com/ConstantineJJ/Constantine-Hub/pull/3):
+  [Hub build/layout/publish](https://github.com/ConstantineJJ/Constantine-Hub/actions/runs/36360182965),
+  [Godot MCP](https://github.com/ConstantineJJ/Constantine-Hub/actions/runs/36360182883),
+  [Local Files MCP](https://github.com/ConstantineJJ/Constantine-Hub/actions/runs/36360182871).
+  Hub run publishes `ConstantineHub-win-x64` and `ConstantineHub-layout-evidence`.
+  Portable remains framework-dependent and requires .NET 10 Desktop Runtime x64.
+  PR is prepared; merge/deployment is not part of this layout pass.
+- SKIP: physical multi-monitor DPI transitions and Windows accessibility setting
+  changes; fresh engine/runtime/input acceptance is not claimed by layout tests.
+
+Supplied runtime evidence confirms all three tunnels reached ready under Hub
+ownership, Godot plugin enabled, and Editor Bridge connected on 6262. Runtime
+Bridge was stopped/not connected in the screenshot. This advances the editor
+startup evidence but does not close the live Godot runtime gate below.
+
+## Constantine Hub v0.1.2 baseline
 
 Implemented .NET 10 WinForms Hub core:
 

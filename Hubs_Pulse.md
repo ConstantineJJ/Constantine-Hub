@@ -100,7 +100,9 @@ six 36-pixel rows need 216 pixels, but its 320-pixel card leaves only 182 after
 outer spacing, padding, title and actions. The final Skills/contracts row was
 hidden. Fixed button sizes also clipped captions. Dpi mode alone cannot make
 these mutually inconsistent constraints fit; the form lacked an explicit
-96-DPI design baseline.
+96-DPI design baseline. Construction now suspends layout until the full control
+tree exists, preventing initial DPI scaling from being consumed before cards
+and the log row have been added.
 
 Changes:
 
@@ -119,7 +121,8 @@ Validation:
 - PASS: Release build/publish; Godot launcher and addon bundled.
 - PASS: 24 native WinForms geometry/render cases (simulated DPI 100/125/150/200%,
   15/18/22.5 pt, narrow/wide windows), including long status refreshes and scrolling.
-- PASS: current-monitor PerMonitorV2 layout; native rendered PNGs inspected.
+- PASS: current-monitor PerMonitorV2 layout at actual 144 DPI (150%), including
+  a live font/width change; native rendered PNGs inspected.
 - PASS: Godot stdio initialize/list/call, all 29 tools; Local Files 9 tests.
 - GitHub CI/artifact: pending this branch's PR run; final run recorded separately.
 - SKIP: physical multi-monitor DPI transitions and Windows accessibility setting

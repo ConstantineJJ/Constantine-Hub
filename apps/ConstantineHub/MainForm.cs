@@ -39,6 +39,7 @@ internal sealed class MainForm : Form
 
     internal MainForm(bool layoutPreview = false)
     {
+        SuspendLayout();
         Text = "Constantine Hub";
         StartPosition = FormStartPosition.CenterScreen;
         AutoScaleDimensions = new SizeF(96F, 96F);
@@ -51,6 +52,7 @@ internal sealed class MainForm : Form
         Icon = AppIconProvider.Current;
 
         BuildUi();
+        ResumeLayout(performLayout: true);
         // The layout harness renders the production controls without settings, probes or processes.
         if (layoutPreview)
             return;

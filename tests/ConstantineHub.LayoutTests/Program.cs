@@ -68,6 +68,8 @@ internal static class Program
         Settle(form);
         var log = Descendants(form).OfType<RichTextBox>().Single();
         var logHeight = log.Height;
+        var physicalScale = native ? form.DeviceDpi / 96F : scale;
+        Require(Math.Abs(logHeight - 274 * physicalScale) <= 3, "Log viewport did not follow DPI scaling.");
         Require(Math.Abs(log.Font.SizeInPoints - 9.5F * scale) < .1F, "Log font changed with UI font.");
         VerifyControls(form, dpi, points, width);
 
@@ -92,13 +94,15 @@ internal static class Program
         viewport.ScrollControlIntoView(lastCard);
         Settle(form);
         var lastRow = values[^1];
-        var rowOnScreen = lastRow.RectangleToScreen(lastRow.ClientRectangle);
-        var viewOnScreen = viewport.RectangleToScreen(viewport.ClientRectangle);
         // A tall card can exceed the viewport; scrolling to the final row must still work.
         viewport.AutoScrollPosition = new Point(0, viewport.DisplayRectangle.Height);
         Settle(form);
-        rowOnScreen = lastRow.RectangleToScreen(lastRow.ClientRectangle);
-        Require(rowOnScreen.Bottom <= viewOnScreen.Bottom, "Last Godot row is unreachable by scrolling.");
+        var rowOnScreen = lastRow.RectangleToScreen(lastRow.ClientRectangle);
+        var viewOnScreen = viewport.RectangleToScreen(viewport.ClientRectangle);
+        if (rowOnScreen.Bottom > viewOnScreen.Bottom)
+            Capture(form, Path.Combine(output, $"failure-{dpi}-{points}-{width}.png"));
+        Require(rowOnScreen.Bottom <= viewOnScreen.Bottom,
+            $"Last Godot row unreachable: dpi={dpi}, font={points}, width={width}, row={rowOnScreen}, viewport={viewOnScreen}, display={viewport.DisplayRectangle}, scroll={viewport.AutoScrollPosition}.");
 
         if (capture) Capture(form, Path.Combine(output, $"{prefix}-bottom.png"));
         if (native)
@@ -109,7 +113,7 @@ internal static class Program
             VerifyControls(form, form.DeviceDpi, 22.5F, 900);
             Require(log.Height == logHeight, "Live font/width change resized the log.");
         }
-        Console.WriteLine($"PASS dpi={dpi} font={points} width={width} log={log.Height}px");
+        Console.WriteLine($"PASS dpi={(native ? form.DeviceDpi : dpi)} font={points} width={width} log={log.Height}px");
     }
 
     private static void Capture(Form form, string path)

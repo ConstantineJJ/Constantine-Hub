@@ -39,6 +39,7 @@ jobs:
         run: dotnet run --project tests/ConstantineHub.LayoutTests -c Release -- artifacts/layout --native
 
       - name: Upload layout evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ConstantineHub-layout-evidence

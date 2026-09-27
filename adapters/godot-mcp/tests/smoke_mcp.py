@@ -57,9 +57,9 @@ async def main() -> None:
                 missing = sorted(EXPECTED_TOOLS - names)
                 assert not missing, f"Missing MCP tools: {missing}"
                 skill_result = await session.call_tool("godot_list_skills", {})
-                assert not skill_result.isError, skill_result
+                assert not skill_result.is_error, skill_result
                 list_result = await session.call_tool("godot_list_project_files", {"path": "res://", "recursive": False})
-                assert not list_result.isError, list_result
+                assert not list_result.is_error, list_result
 
         from godot_mcp.config import GodotSettings
         from godot_mcp.project_service import ProjectService

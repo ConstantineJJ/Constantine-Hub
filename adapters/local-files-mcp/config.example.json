@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "allowed_roots": [
+    {
+      "path": "E:\\MyCreations",
+      "permissions": ["read", "write", "delete"]
+    },
+    {
+      "path": "F:\\My Lab",
+      "permissions": ["read", "write", "delete"]
+    }
+  ],
+  "limits": {
+    "max_read_bytes": 2000000,
+    "max_write_bytes": 2000000,
+    "max_search_file_bytes": 1000000,
+    "max_results": 200,
+    "max_tree_entries": 2000
+  },
+  "audit_log": "%APPDATA%\\ConstantineHub\\local-files-audit.jsonl"
+}

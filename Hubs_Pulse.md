@@ -126,7 +126,14 @@ Validation:
 - PASS: current-monitor PerMonitorV2 layout at actual 144 DPI (150%), including
   a live font/width change; native rendered PNGs inspected.
 - PASS: Godot stdio initialize/list/call, all 29 tools; Local Files 9 tests.
-- GitHub CI/artifact: pending this branch's PR run; final run recorded separately.
+- PASS: GitHub CI for `f262734480a8d7889758cfb25662a759ae50ec20` in
+  [PR #3](https://github.com/ConstantineJJ/Constantine-Hub/pull/3):
+  [Hub build/layout/publish](https://github.com/ConstantineJJ/Constantine-Hub/actions/runs/36360182965),
+  [Godot MCP](https://github.com/ConstantineJJ/Constantine-Hub/actions/runs/36360182883),
+  [Local Files MCP](https://github.com/ConstantineJJ/Constantine-Hub/actions/runs/36360182871).
+  Hub run publishes `ConstantineHub-win-x64` and `ConstantineHub-layout-evidence`.
+  Portable remains framework-dependent and requires .NET 10 Desktop Runtime x64.
+  PR is prepared; merge/deployment is not part of this layout pass.
 - SKIP: physical multi-monitor DPI transitions and Windows accessibility setting
   changes; fresh engine/runtime/input acceptance is not claimed by layout tests.
 

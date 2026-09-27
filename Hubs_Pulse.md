@@ -149,7 +149,8 @@ When Local Files MCP is integrated into Constantine Hub, it must have a dedicate
 - remove a configured folder;
 - see the canonical resolved path before saving;
 - independently toggle `read`, `write`, and `delete` permissions per root;
-- refuse duplicate/nested-conflicting entries cleanly;
+- refuse duplicate canonical roots cleanly;
+- allow intentional nested roots, while warning that permissions are additive across overlapping roots and a nested rule cannot revoke a permission already granted by a parent root;
 - refuse invalid/reparse escape roots;
 - save to the machine-local Local Files MCP config, never to Git;
 - apply changes safely by validating the new config first and then restarting/reloading only the Local Files adapter if required.
@@ -244,3 +245,66 @@ Required regression sequence for 0.5.3:
 5. child exits before readiness -> report failure rather than showing false Running;
 6. Stop Tunnel kills only the app-owned child;
 7. Blender bridge and 8/8 skill routing still pass after tunnel recovery.
+
+
+---
+
+## PASS C started early — Constantine Hub v0.1 skeleton
+
+While Blender 0.5.3 waits for a Windows compile/runtime regression pass, the shared Hub foundation was started in parallel because Local Files MCP now provides direct local source access.
+
+Created `apps/ConstantineHub/` as a .NET 10 WinForms application with:
+
+- reusable `IHubAdapter` state contract;
+- owned-process wrapper that only stops the child process it launched;
+- tunnel-client discovery (`CONSTANTINE_TUNNEL_CLIENT`, known local path, then PATH);
+- tunnel profile parsing from `%APPDATA%\tunnel-client`;
+- TCP + `/api/status` + `/readyz` identity verification;
+- generic tunnel adapter lifecycle with `Stopped`, `Starting`, `Running`, `External`, `Degraded`, `NotConfigured`, `Failed` states;
+- startup readiness wait and child-exit detection;
+- external/adopted tunnel protection: Hub never stops a tunnel it does not own;
+- Doctor support using an ephemeral health listener if the real tunnel is already running.
+
+### First dashboard
+
+The first Hub UI now has three cards:
+
+1. **Local Files MCP** — tunnel state, root count, access summary, Start/Stop/Restart/Doctor/Settings;
+2. **Blender MCP** — live Blender process / bridge `9876` / `blender-local` tunnel diagnostics, but lifecycle controls intentionally remain pending until Blender 0.5.3 regression QA;
+3. **Godot MCP** — explicit rebuild-pending placeholder.
+
+A shared log panel, Refresh and Save Log are included.
+
+### Local Files Settings window implemented
+
+The requested Local Files MCP folder-management window now exists in source:
+
+- native `FolderBrowserDialog` Add Folder;
+- Remove selected root;
+- canonical path displayed in the grid;
+- independent Read / Write / Delete checkboxes;
+- duplicate canonical root rejection;
+- nested-root warning explaining additive permission semantics;
+- explicit warning before saving any Delete permission;
+- preserves the rest of the existing JSON config and replaces only `allowed_roots`;
+- atomic-ish temp + `File.Replace` save with `.bak` backup;
+- settings remain machine-local under `%APPDATA%\ConstantineHub`, never Git;
+- when Hub owns the Local Files tunnel, saving settings can restart only that adapter; if the tunnel is external/adopted, Hub refuses to kill it and asks for a one-time external restart.
+
+### Repository / CI
+
+The Hub source and first settings UI were also written to `ConstantineJJ/Constantine-Hub` on GitHub. A new Windows workflow `.github/workflows/constantine-hub.yml` builds `.NET 10` and publishes a portable `win-x64` artifact. First CI run is pending at the time of this entry.
+
+### Hub CI result
+
+First Constantine Hub workflow run found one compile error: the `TunnelProfile` record property named `Path` shadowed `System.IO.Path` inside its static loader. The record field was renamed to `ProfilePath`.
+
+Second workflow run **PASS**:
+
+- .NET 10 setup PASS;
+- restore PASS;
+- Release build PASS;
+- portable `win-x64` publish PASS;
+- artifact upload PASS.
+
+Artifact: `ConstantineHub-win-x64` (workflow run `36351275578`, head `0564c1dd13ca79e47ad2358bfa193d782c78aa0f`). Source now has a green Windows compile/publish gate; runtime GUI QA on the user machine is still pending.

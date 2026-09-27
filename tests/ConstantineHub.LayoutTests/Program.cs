@@ -115,8 +115,12 @@ internal static class Program
         Settle(form);
         var focusedBounds = focusTarget.RectangleToScreen(focusTarget.ClientRectangle);
         viewOnScreen = viewport.RectangleToScreen(viewport.ClientRectangle);
-        Require(focusedBounds.Top >= viewOnScreen.Top && focusedBounds.Bottom <= viewOnScreen.Bottom,
-            "A new keyboard focus did not scroll into view.");
+        // At 200% a hosted runner can constrain the whole window to a 768px desktop.
+        // If the viewport is shorter than the button, require the largest visible portion;
+        // when it fits, require the entire button just as on a normal-sized desktop.
+        var visibleFocus = Rectangle.Intersect(focusedBounds, viewOnScreen);
+        Require(viewOnScreen.Height > 0 && visibleFocus.Height >= Math.Min(focusedBounds.Height, viewOnScreen.Height),
+            $"A new keyboard focus did not scroll into view: button={focusedBounds}, viewport={viewOnScreen}, visible={visibleFocus}.");
         if (native)
         {
             form.Font = new Font("Segoe UI", 22.5F);

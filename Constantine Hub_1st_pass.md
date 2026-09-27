@@ -274,7 +274,7 @@ LOCAL FILES
 ● MCP Server
 ● Tunnel
 ● Allowed Roots
-[ Start ] [ Stop ] [ Restart ] [ Doctor ] [ Logs ]
+[ Start ] [ Stop ] [ Restart ] [ Doctor ] [ Logs ] [ Settings ]
 
 BLENDER
 ● Blender
@@ -288,6 +288,19 @@ GODOT
 ○ Not installed / not configured
 [ Setup ]
 ```
+
+Для `Local Files MCP` кнопка `Settings` обязательна уже в первом Hub UI. Окно должно управлять allowlist без ручного редактирования JSON:
+
+- `Add Folder` через системный folder picker;
+- `Remove` выбранного root;
+- отображение canonical/resolved path до сохранения;
+- отдельные флаги `Read`, `Write`, `Delete` для каждого root;
+- предупреждение при широком destructive доступе;
+- валидация duplicate/nested/reparse-root конфликтов;
+- сохранение только в machine-local config (`%APPDATA%\\ConstantineHub\\local-files-mcp.json` или его будущую schema-versioned замену), не в Git;
+- безопасное применение: сначала validate, затем reload/restart только Local Files adapter при необходимости.
+
+Главный экран Hub показывает только summary (`N roots`, `RW`, `Delete enabled`), а полный список путей живёт в Settings.
 
 ---
 

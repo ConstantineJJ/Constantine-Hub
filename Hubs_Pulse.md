@@ -99,11 +99,12 @@ Added Windows unit tests for:
 - create/read/edit/append/copy/move/delete round trip;
 - filename search;
 - text search;
-- explicit recursive-delete behavior.
+- explicit recursive-delete behavior;
+- current MCP Python SDK v2 server import/registration surface.
 
 Added `.github/workflows/local-files-mcp.yml` using `windows-latest`, Python 3.11, compile check and pytest.
 
-At the time this Pulse entry was written, the first GitHub Actions run had started and was still in progress. Do not call v0.1 runtime-accepted until CI and the real ChatGPT tunnel QA both pass.
+**CI PASS:** GitHub Actions run #1 passed compile + unit tests. Run #2 also passed after adding the explicit MCP v2 server import test. This proves the package installs and the current `MCPServer` integration imports on Windows CI. It does **not** yet prove the real Secure MCP Tunnel / ChatGPT connector path.
 
 ---
 
@@ -177,7 +178,7 @@ PASS A is complete only after all of these are observed through the actual ChatG
 - tunnel restart does not corrupt the profile;
 - no conflict with Blender tunnel on port 8080.
 
-Until then the current status is **SOURCE IMPLEMENTED / LIVE QA PENDING**.
+Until then the current status is **SOURCE + WINDOWS CI PASS / LIVE QA PENDING**.
 
 ---
 
@@ -194,7 +195,6 @@ Until then the current status is **SOURCE IMPLEMENTED / LIVE QA PENDING**.
 
 ## Known open items
 
-- GitHub Actions result still needs to be recorded after completion.
 - No live Secure MCP Tunnel exists yet for Local Files MCP.
 - No ChatGPT end-to-end file mutation has been executed yet.
 - Hub GUI/core has not started; current code is the first adapter foundation only.

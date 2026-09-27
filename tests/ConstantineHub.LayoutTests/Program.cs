@@ -86,7 +86,7 @@ internal static class Program
         values[7].Text = samples[7];
         Settle(form);
 
-        var viewport = Descendants(form).OfType<Panel>().Single(p => p.GetType() == typeof(Panel) && p.AutoScroll);
+        var viewport = Descendants(form).OfType<Panel>().Single(p => p.AutoScroll);
         var capture = points == 15 && width == 1280 && (dpi == 96 || dpi == 144);
         var prefix = native ? $"hub-native-{form.DeviceDpi}dpi" : $"hub-{dpi}dpi";
         if (capture)
@@ -110,6 +110,13 @@ internal static class Program
             $"Last Godot row unreachable: dpi={dpi}, font={points}, width={width}, row={rowOnScreen}, viewport={viewOnScreen}, display={viewport.DisplayRectangle}, scroll={viewport.AutoScrollPosition}.");
 
         if (capture) Capture(form, Path.Combine(output, $"{prefix}-bottom.png"));
+        var focusTarget = Descendants(viewport).OfType<Button>().First(b => b.Text == "Stop");
+        Require(focusTarget.Focus(), "Could not focus a card action.");
+        Settle(form);
+        var focusedBounds = focusTarget.RectangleToScreen(focusTarget.ClientRectangle);
+        viewOnScreen = viewport.RectangleToScreen(viewport.ClientRectangle);
+        Require(focusedBounds.Top >= viewOnScreen.Top && focusedBounds.Bottom <= viewOnScreen.Bottom,
+            "A new keyboard focus did not scroll into view.");
         if (native)
         {
             form.Font = new Font("Segoe UI", 22.5F);

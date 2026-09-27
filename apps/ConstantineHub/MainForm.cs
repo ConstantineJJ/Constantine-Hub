@@ -108,7 +108,7 @@ internal sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 280));
         Controls.Add(root);
 
-        var viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty };
+        var viewport = new CardViewport { Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty };
         var cards = new TableLayoutPanel
         {
             Dock = DockStyle.Top,
@@ -122,6 +122,8 @@ internal sealed class MainForm : Form
         for (var i = 0; i < cards.RowCount; i++)
             cards.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         viewport.Controls.Add(cards);
+        // Keep the scroll extent tied to the complete content after font/window changes.
+        cards.SizeChanged += (_, _) => viewport.AutoScrollMinSize = new Size(0, cards.Height);
         root.Controls.Add(viewport, 0, 0);
 
         var header = new TableLayoutPanel
@@ -302,6 +304,30 @@ internal sealed class MainForm : Form
         // Measure wrapping at the allocated width so a single row does not reserve two rows.
         public override Size GetPreferredSize(Size proposedSize)
             => base.GetPreferredSize(new Size(proposedSize.Width <= 1 ? Width : proposedSize.Width, 0));
+    }
+
+    private sealed class CardViewport : Panel
+    {
+        private Control? _lastFocusedControl;
+
+        protected override void OnLeave(EventArgs e)
+        {
+            _lastFocusedControl = null;
+            base.OnLeave(e);
+        }
+
+        protected override Point ScrollToControl(Control activeControl)
+        {
+            // Status/font relayout must not undo a user's scroll by following the same
+            // focused button again. A new keyboard focus still scrolls into view normally.
+            if (activeControl == FindForm()?.ActiveControl)
+            {
+                if (activeControl == _lastFocusedControl)
+                    return DisplayRectangle.Location;
+                _lastFocusedControl = activeControl;
+            }
+            return base.ScrollToControl(activeControl);
+        }
     }
 
     private static void AddStatusRow(TableLayoutPanel table, int row, string name, Label value)

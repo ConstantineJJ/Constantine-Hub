@@ -111,6 +111,8 @@ Changes:
 - Wrapped actions measure at the allocated width, avoiding spurious empty rows.
 - Explicit 96-DPI baseline and PerMonitorV2 application mode.
 - Card viewport scrolls when the window cannot fit all content.
+- Relayout preserves user scrolling instead of snapping back to the already
+  focused action; changing keyboard focus still reveals the new action.
 - Log keeps Cascadia Mono 9.5 pt, colors and no-wrap behavior; a separate
   280-logical-pixel row preserves approximately the supplied 420-pixel viewport
   at 150% and is unaffected by growing cards or UI fonts.

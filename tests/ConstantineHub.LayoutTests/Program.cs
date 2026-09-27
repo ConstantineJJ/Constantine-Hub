@@ -49,9 +49,14 @@ internal static class Program
             foreach (var entry in fonts)
                 entry.Control.Font = new Font(entry.Font.FontFamily, entry.Font.SizeInPoints * scale, entry.Font.Style);
         }
-        // Create native handles and settle layout without showing a tray icon or starting adapters.
+        // A shown native window is required for ScrollableControl to update its scroll range
+        // after Windows constrains its bounds to the runner's (often small) desktop.
+        // Keep the test window transparent and out of the taskbar; no adapters/tray are created.
+        form.Opacity = 0;
+        form.ShowInTaskbar = false;
         _ = form.Handle;
         foreach (var control in Descendants(form)) _ = control.Handle;
+        form.Show();
         Settle(form);
         var labels = Descendants(form).OfType<Label>().ToArray();
         var values = labels.Where(l => l.Text == "● Checking…").ToArray();

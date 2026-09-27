@@ -4,7 +4,7 @@ namespace ConstantineHub.Core;
 
 internal sealed record TunnelProfile(
     string Name,
-    string Path,
+    string ProfilePath,
     string TunnelId,
     string McpCommand,
     string ListenAddress,

@@ -18,7 +18,12 @@ __pycache__/
 # Build artifacts
 dist/
 build/
+bin/
+obj/
 *.egg-info/
+
+# Local safety backups
+*.bak-*
 
 # IDE / OS
 .vscode/

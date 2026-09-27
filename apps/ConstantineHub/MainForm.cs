@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using ConstantineHub.Adapters.Blender;
 using ConstantineHub.Adapters.LocalFiles;
 using ConstantineHub.Core;
 
@@ -7,6 +8,7 @@ namespace ConstantineHub;
 internal sealed class MainForm : Form
 {
     private readonly LocalFilesAdapter _localFiles = new();
+    private readonly BlenderAdapter _blender = new();
     private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 1500 };
     private readonly RichTextBox _log = new();
 
@@ -16,6 +18,7 @@ internal sealed class MainForm : Form
     private readonly Label _blenderApp = new();
     private readonly Label _blenderBridge = new();
     private readonly Label _blenderTunnel = new();
+    private readonly Label _blenderSkills = new();
     private readonly Label _godotStatus = new();
 
     private bool _refreshing;
@@ -37,6 +40,7 @@ internal sealed class MainForm : Form
 
         BuildUi();
         _localFiles.LogLine += LogFromAnyThread;
+        _blender.LogLine += LogFromAnyThread;
         _statusTimer.Tick += async (_, _) => await RefreshStatusAsync();
         _statusTimer.Start();
 
@@ -51,6 +55,7 @@ internal sealed class MainForm : Form
         {
             _statusTimer.Stop();
             _localFiles.Dispose();
+            _blender.Dispose();
         };
     }
 
@@ -130,18 +135,20 @@ internal sealed class MainForm : Form
     private Control BuildBlenderCard()
     {
         var card = BuildCard("BLENDER MCP", out var content, out var actions);
+        content.RowCount = 4;
+        content.RowStyles.Clear();
+        for (var i = 0; i < 4; i++)
+            content.RowStyles.Add(new RowStyle(SizeType.Percent, 25F));
+
         AddStatusRow(content, 0, "Blender", _blenderApp);
         AddStatusRow(content, 1, "Bridge", _blenderBridge);
         AddStatusRow(content, 2, "Tunnel", _blenderTunnel);
+        AddStatusRow(content, 3, "Skills", _blenderSkills);
 
-        var note = new Label
-        {
-            Text = "Lifecycle migration pending — current Blender MCP_Con remains the runtime owner until v0.5.3 regression QA passes.",
-            AutoSize = true,
-            ForeColor = Muted,
-            Margin = new Padding(0, 8, 0, 0)
-        };
-        actions.Controls.Add(note);
+        actions.Controls.Add(MakeButton("Start", async (_, _) => await RunAdapterActionAsync("Start Blender MCP", _blender.StartAsync), primary: true));
+        actions.Controls.Add(MakeButton("Stop", async (_, _) => await RunAdapterActionAsync("Stop Blender MCP", _blender.StopAsync)));
+        actions.Controls.Add(MakeButton("Restart", async (_, _) => await RunAdapterActionAsync("Restart Blender MCP", _blender.RestartAsync)));
+        actions.Controls.Add(MakeButton("Doctor", async (_, _) => await DoctorBlenderAsync()));
         return card;
     }
 
@@ -271,22 +278,16 @@ internal sealed class MainForm : Form
                     ? $"Read • Write {(summary.AnyWrite ? "ON" : "off")} • Delete {(summary.AnyDelete ? "ON" : "off")}"
                     : "Config invalid");
 
-            var blenderRunning = Process.GetProcessesByName("blender").Any(p => !p.HasExited);
-            SetStatus(_blenderApp, blenderRunning, blenderRunning ? "Running" : "Not running");
-
-            var bridge = await PortProbe.CanConnectAsync("127.0.0.1", 9876, 400);
-            SetStatus(_blenderBridge, bridge, bridge ? "Connected 127.0.0.1:9876" : "Not listening on 9876");
-
-            var blenderTunnel = await TunnelRuntimeProbe.ProbeAsync("blender-local");
-            SetState(_blenderTunnel,
-                blenderTunnel.State switch
-                {
-                    TunnelRuntimeState.RunningExpected => AdapterState.External,
-                    TunnelRuntimeState.Stopped => AdapterState.Stopped,
-                    TunnelRuntimeState.InvalidProfile => AdapterState.NotConfigured,
-                    _ => AdapterState.Degraded
-                },
-                blenderTunnel.Message);
+            var blender = await _blender.GetSnapshotAsync();
+            SetStatus(_blenderApp, blender.BlenderRunning,
+                blender.BlenderRunning ? "Running" : "Not running");
+            SetStatus(_blenderBridge, blender.BridgeConnected,
+                blender.BridgeConnected ? $"Connected {blender.BridgeEndpoint}" : $"Not listening on {blender.BridgeEndpoint}");
+            SetState(_blenderTunnel, blender.TunnelStatus.State, blender.TunnelStatus.Summary);
+            SetStatus(_blenderSkills, blender.Skills.Success,
+                blender.Skills.Success
+                    ? $"{blender.Skills.VerifiedCount}/{blender.Skills.SourceCount} verified"
+                    : blender.Skills.Message);
 
             SetState(_godotStatus, AdapterState.NotConfigured, "Rebuild pending; no runtime is attached.");
         }
@@ -332,6 +333,25 @@ internal sealed class MainForm : Form
         {
             Log("Local Files Doctor FAILED: " + ex.Message);
             MessageBox.Show(this, ex.Message, "Local Files Doctor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            await RefreshStatusAsync();
+        }
+    }
+
+    private async Task DoctorBlenderAsync()
+    {
+        try
+        {
+            Log("Blender Doctor requested.");
+            var result = await _blender.DoctorAsync();
+            Log(result);
+        }
+        catch (Exception ex)
+        {
+            Log("Blender Doctor FAILED: " + ex.Message);
+            MessageBox.Show(this, ex.Message, "Blender Doctor", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {

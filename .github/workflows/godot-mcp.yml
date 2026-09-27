@@ -1,0 +1,45 @@
+name: Godot MCP
+
+on:
+  push:
+    paths:
+      - "adapters/godot-mcp/**"
+      - ".github/workflows/godot-mcp.yml"
+  pull_request:
+    paths:
+      - "adapters/godot-mcp/**"
+      - ".github/workflows/godot-mcp.yml"
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: adapters/godot-mcp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: adapters/godot-mcp/pyproject.toml
+
+      - name: Install
+        run: python -m pip install -e .
+
+      - name: Compile Python
+        run: python -m compileall -q src tests
+
+      - name: MCP stdio smoke
+        run: python tests/smoke_mcp.py
+
+      - name: Verify project addon payload
+        shell: pwsh
+        run: |
+          $addon = "project-addon/addons/constantine_mcp"
+          $required = @("plugin.cfg", "constantine_mcp_plugin.gd", "editor_bridge.gd", "runtime_bridge.gd", "variant_codec.gd")
+          foreach ($name in $required) {
+            if (-not (Test-Path (Join-Path $addon $name))) { throw "Missing Godot addon file: $name" }
+          }

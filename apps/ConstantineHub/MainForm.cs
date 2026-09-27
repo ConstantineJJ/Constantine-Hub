@@ -1,4 +1,5 @@
 using ConstantineHub.Adapters.Blender;
+using ConstantineHub.Adapters.Godot;
 using ConstantineHub.Adapters.LocalFiles;
 using ConstantineHub.Core;
 
@@ -8,6 +9,7 @@ internal sealed class MainForm : Form
 {
     private readonly LocalFilesAdapter _localFiles = new();
     private readonly BlenderAdapter _blender = new();
+    private readonly GodotAdapter _godot = new();
     private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 1500 };
     private readonly RichTextBox _log = new();
     private readonly NotifyIcon _trayIcon = new();
@@ -19,7 +21,12 @@ internal sealed class MainForm : Form
     private readonly Label _blenderBridge = new();
     private readonly Label _blenderTunnel = new();
     private readonly Label _blenderSkills = new();
-    private readonly Label _godotStatus = new();
+    private readonly Label _godotProject = new();
+    private readonly Label _godotPlugin = new();
+    private readonly Label _godotEditor = new();
+    private readonly Label _godotRuntime = new();
+    private readonly Label _godotTunnel = new();
+    private readonly Label _godotSkills = new();
 
     private bool _refreshing;
     private bool _trayHintShown;
@@ -34,11 +41,11 @@ internal sealed class MainForm : Form
     {
         Text = "Constantine Hub";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(1000, 800);
-        Size = new Size(1140, 900);
+        MinimumSize = new Size(1100, 1120);
+        Size = new Size(1280, 1200);
         BackColor = Color.FromArgb(22, 24, 29);
         ForeColor = Color.Gainsboro;
-        Font = new Font("Segoe UI", 10F);
+        Font = new Font("Segoe UI", 15F);
         AutoScaleMode = AutoScaleMode.Dpi;
         Icon = AppIconProvider.Current;
 
@@ -47,6 +54,7 @@ internal sealed class MainForm : Form
 
         _localFiles.LogLine += LogFromAnyThread;
         _blender.LogLine += LogFromAnyThread;
+        _godot.LogLine += LogFromAnyThread;
         _statusTimer.Tick += async (_, _) => await RefreshStatusAsync();
         _statusTimer.Start();
 
@@ -60,8 +68,8 @@ internal sealed class MainForm : Form
 
         Shown += async (_, _) =>
         {
-            Log("Constantine Hub v0.1 started.");
-            Log("Local Files MCP and Blender MCP are managed adapters. Godot MCP rebuild is pending.");
+            Log($"Constantine Hub v{GetDisplayVersion()} started.");
+            Log("Local Files MCP, Blender MCP and Godot MCP are managed adapters.");
             await RefreshStatusAsync();
         };
 
@@ -72,6 +80,7 @@ internal sealed class MainForm : Form
             _trayIcon.Dispose();
             _localFiles.Dispose();
             _blender.Dispose();
+            _godot.Dispose();
         };
     }
 
@@ -84,11 +93,11 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 6
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 198));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 220));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 116));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 286));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 320));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
 
@@ -99,12 +108,12 @@ internal sealed class MainForm : Form
             RowCount = 2,
             Margin = Padding.Empty
         };
-        header.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        header.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         header.Controls.Add(new Label
         {
             Text = "Constantine Hub",
-            Font = new Font("Segoe UI Semibold", 22F),
+            Font = new Font("Segoe UI Semibold", 28F),
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true
@@ -112,6 +121,7 @@ internal sealed class MainForm : Form
         header.Controls.Add(new Label
         {
             Text = $"Local MCP control plane  •  v{GetDisplayVersion()}",
+            Font = new Font("Segoe UI", 13F),
             ForeColor = Muted,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.TopLeft,
@@ -179,15 +189,19 @@ internal sealed class MainForm : Form
 
     private Control BuildGodotCard()
     {
-        var card = BuildCard("GODOT MCP", 1, out var content, out var actions);
-        AddStatusRow(content, 0, "Status", _godotStatus);
-        actions.Controls.Add(new Label
-        {
-            Text = "Rebuild pending — future adapter will install/update the Godot project plugin automatically.",
-            AutoSize = true,
-            ForeColor = Muted,
-            Margin = new Padding(0, 8, 0, 0)
-        });
+        var card = BuildCard("GODOT MCP", 6, out var content, out var actions);
+        AddStatusRow(content, 0, "Project", _godotProject);
+        AddStatusRow(content, 1, "Plugin", _godotPlugin);
+        AddStatusRow(content, 2, "Editor bridge", _godotEditor);
+        AddStatusRow(content, 3, "Runtime bridge", _godotRuntime);
+        AddStatusRow(content, 4, "Tunnel", _godotTunnel);
+        AddStatusRow(content, 5, "Skills/contracts", _godotSkills);
+
+        actions.Controls.Add(MakeButton("Start", async (_, _) => await RunAdapterActionAsync("Start Godot MCP", _godot.StartAsync), primary: true));
+        actions.Controls.Add(MakeButton("Stop", async (_, _) => await RunAdapterActionAsync("Stop Godot MCP", _godot.StopAsync)));
+        actions.Controls.Add(MakeButton("Restart", async (_, _) => await RunAdapterActionAsync("Restart Godot MCP", _godot.RestartAsync)));
+        actions.Controls.Add(MakeButton("Install Plugin", (_, _) => InstallGodotPlugin()));
+        actions.Controls.Add(MakeButton("Doctor", async (_, _) => await DoctorGodotAsync()));
         return card;
     }
 
@@ -211,16 +225,16 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 3
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
         card.Controls.Add(layout);
 
         layout.Controls.Add(new Label
         {
             Text = title,
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI Semibold", 11F),
+            Font = new Font("Segoe UI Semibold", 15F),
             ForeColor = Color.White,
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true
@@ -233,10 +247,10 @@ internal sealed class MainForm : Form
             RowCount = statusRows,
             Margin = Padding.Empty
         };
-        content.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 205));
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (var i = 0; i < statusRows; i++)
-            content.RowStyles.Add(new RowStyle(SizeType.Percent, 100F / statusRows));
+            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         layout.Controls.Add(content, 0, 1);
 
         actions = new FlowLayoutPanel
@@ -260,7 +274,7 @@ internal sealed class MainForm : Form
             ForeColor = Color.Silver,
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true,
-            Margin = new Padding(3, 1, 3, 1)
+            Margin = new Padding(3, 4, 6, 4)
         }, 0, row);
 
         value.Dock = DockStyle.Fill;
@@ -268,7 +282,7 @@ internal sealed class MainForm : Form
         value.ForeColor = Muted;
         value.TextAlign = ContentAlignment.MiddleLeft;
         value.AutoEllipsis = true;
-        value.Margin = new Padding(3, 1, 3, 1);
+        value.Margin = new Padding(3, 4, 6, 4);
         table.Controls.Add(value, 1, row);
     }
 
@@ -277,9 +291,9 @@ internal sealed class MainForm : Form
         var button = new Button
         {
             Text = text,
-            Width = text.Length > 10 ? 128 : 112,
-            Height = 34,
-            Margin = new Padding(0, 0, 8, 0),
+            Width = text.Length > 10 ? 190 : 145,
+            Height = 46,
+            Margin = new Padding(0, 0, 10, 0),
             FlatStyle = FlatStyle.Flat,
             BackColor = primary ? Color.FromArgb(55, 106, 175) : Color.FromArgb(42, 46, 55),
             ForeColor = Color.White
@@ -328,7 +342,6 @@ internal sealed class MainForm : Form
         }
         catch
         {
-            // Notification support varies by Windows settings; tray behavior still works.
         }
     }
 
@@ -377,7 +390,19 @@ internal sealed class MainForm : Form
                     ? $"{blender.Skills.VerifiedCount}/{blender.Skills.SourceCount} verified"
                     : blender.Skills.Message);
 
-            SetState(_godotStatus, AdapterState.NotConfigured, "Rebuild pending; no runtime is attached.");
+            var godot = await _godot.GetSnapshotAsync();
+            SetStatus(_godotProject, godot.Configured, godot.ProjectRoot);
+            SetStatus(_godotPlugin, godot.Plugin.Installed && godot.Plugin.Enabled, godot.Plugin.Message);
+            SetStatus(_godotEditor, godot.EditorBridgeConnected,
+                godot.EditorBridgeConnected
+                    ? $"Connected {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}"
+                    : $"Not listening on {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}");
+            SetStatus(_godotRuntime, godot.RuntimeBridgeConnected,
+                godot.RuntimeBridgeConnected
+                    ? $"Connected {_godot.Settings.RuntimeHost}:{_godot.Settings.RuntimePort}"
+                    : "Stopped / not connected");
+            SetState(_godotTunnel, godot.TunnelStatus.State, godot.TunnelStatus.Summary);
+            SetStatus(_godotSkills, godot.SkillsOk, godot.SkillsSummary);
         }
         catch (Exception ex)
         {
@@ -394,12 +419,14 @@ internal sealed class MainForm : Form
         Log("Start All requested.");
         await RunAdapterActionQuietAsync("Start Local Files", _localFiles.StartAsync);
         await RunAdapterActionQuietAsync("Start Blender MCP", _blender.StartAsync);
+        await RunAdapterActionQuietAsync("Start Godot MCP", _godot.StartAsync);
         await RefreshStatusAsync();
     }
 
     private async Task StopAllOwnedAsync()
     {
         Log("Stop Hub-Owned requested. External/adopted tunnels will be left untouched.");
+        await RunAdapterActionQuietAsync("Stop Godot MCP", _godot.StopAsync);
         await RunAdapterActionQuietAsync("Stop Blender MCP", _blender.StopAsync);
         await RunAdapterActionQuietAsync("Stop Local Files", _localFiles.StopAsync);
         await RefreshStatusAsync();
@@ -476,6 +503,47 @@ internal sealed class MainForm : Form
         {
             await RefreshStatusAsync();
         }
+    }
+
+    private async Task DoctorGodotAsync()
+    {
+        try
+        {
+            Log("Godot Doctor requested.");
+            var result = await _godot.DoctorAsync();
+            Log(result);
+        }
+        catch (Exception ex)
+        {
+            Log("Godot Doctor FAILED: " + ex.Message);
+            MessageBox.Show(this, ex.Message, "Godot Doctor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            await RefreshStatusAsync();
+        }
+    }
+
+    private void InstallGodotPlugin()
+    {
+        try
+        {
+            var status = _godot.InstallOrUpdatePlugin();
+            Log("Godot plugin: " + status.Message);
+            MessageBox.Show(
+                this,
+                status.Message + Environment.NewLine + Environment.NewLine +
+                "If the Godot editor is already open, reload or restart the project so the editor plugin can activate.",
+                "Godot plugin",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            Log("Godot plugin install FAILED: " + ex.Message);
+            MessageBox.Show(this, ex.Message, "Godot plugin", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        _ = RefreshStatusAsync();
     }
 
     private async Task OpenLocalFilesSettingsAsync()

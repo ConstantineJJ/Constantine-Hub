@@ -15,6 +15,8 @@ internal sealed class LocalFilesSettingsForm : Form
         BackColor = Color.FromArgb(22, 24, 29);
         ForeColor = Color.Gainsboro;
         Font = new Font("Segoe UI", 10F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        Icon = ConstantineHub.Core.AppIconProvider.Current;
 
         BuildUi();
         LoadExistingRules();
@@ -32,7 +34,7 @@ internal sealed class LocalFilesSettingsForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
         Controls.Add(root);
 
@@ -49,6 +51,7 @@ internal sealed class LocalFilesSettingsForm : Form
         _configPath.ForeColor = Color.FromArgb(170, 174, 184);
         _configPath.Text = "Config: " + LocalFilesSettingsStore.ConfigPath;
         _configPath.TextAlign = ContentAlignment.MiddleLeft;
+        _configPath.AutoEllipsis = true;
         root.Controls.Add(_configPath, 0, 1);
 
         ConfigureGrid();

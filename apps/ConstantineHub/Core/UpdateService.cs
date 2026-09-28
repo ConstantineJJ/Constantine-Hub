@@ -120,7 +120,8 @@ internal sealed class UpdateService
         startInfo.ArgumentList.Add("--to");
         startInfo.ArgumentList.Add(update.Tag);
 
-        Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start ConstantineHub.Updater.exe.");
+        if (Process.Start(startInfo) is null)
+            throw new InvalidOperationException("Could not start ConstantineHub.Updater.exe.");
     }
 
     private static HttpClient CreateHttpClient()

@@ -10,6 +10,7 @@ internal static class Program
         var options = ParseArgs(args);
         var form = new MainForm();
         UiPass.Apply(form);
+        UiAcceptancePass.Apply(form);
         form.Shown += (_, _) =>
         {
             if (options.TryGetValue("update-ok-file", out var marker) && !string.IsNullOrWhiteSpace(marker))

@@ -1,9 +1,9 @@
 # Constantine Hub — Project Pulse
 
 **Updated:** 2026-09-28  
-**Current phase:** PASS E — Hub v0.1.4 update/release hardening  
+**Current phase:** PASS E — Hub v0.1.4 live updater QA  
 **Repository:** `ConstantineJJ/Constantine-Hub`  
-**Main head:** pending v0.1.4 merge
+**v0.1.4 release commit:** `b41a70a48e75c7678f58b7931053c4df49b0a5e6`
 
 ## Mission
 
@@ -275,3 +275,13 @@ Acceptance gate for v0.1.4:
 4. current v0.1.3 installation must detect `v0.1.4`;
 5. in-app update must restart into v0.1.4 and preserve Local Files/Blender/Godot machine settings;
 6. one forced bad-start test should confirm rollback before updater PASS is final.
+
+### v0.1.4 repository/release status
+
+- PR #4 squash-merged to `main` as `b41a70a48e75c7678f58b7931053c4df49b0a5e6`.
+- PR CI initially caught `CS0201` in `UpdateService`; fixed before merge. Final PR CI PASS.
+- Main workflow run `36362991496` PASS: restore, Hub + Updater build, portable publish, bundled Godot/updater verification, release packaging, artifact upload, stable/dev release publishing.
+- Stable GitHub Release `v0.1.4` published with `ConstantineHub-win-x64.zip` and `ConstantineHub-win-x64.sha256`.
+- Dev prerelease foundation also published as `v0.1.4-dev.20`.
+- First migration from the currently installed v0.1.3 to v0.1.4 is manual because v0.1.3 predates the updater. From v0.1.4 onward the Stable updater path can be tested in-app.
+- Acceptance gates 1–3 are PASS. Gates 4–6 remain live-machine QA: updater discovery on a later release, settings preservation/restart, and forced rollback test.

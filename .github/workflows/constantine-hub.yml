@@ -44,6 +44,7 @@ jobs:
         run: |
           dotnet publish apps/ConstantineHub/ConstantineHub.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o artifacts/ConstantineHub-win-x64
           dotnet publish apps/ConstantineHub.Updater/ConstantineHub.Updater.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o artifacts/Updater
+          New-Item -ItemType Directory -Force -Path 'artifacts/ConstantineHub-win-x64' | Out-Null
           Copy-Item 'artifacts/Updater/*' 'artifacts/ConstantineHub-win-x64/' -Recurse -Force
 
       - name: Verify bundled Godot adapter and updater

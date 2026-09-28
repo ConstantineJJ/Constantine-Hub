@@ -1,9 +1,10 @@
 # Constantine Hub — Project Pulse
 
 **Updated:** 2026-09-28  
-**Current phase:** PASS F — Hub v0.2.0 UI shell pass / PR #6  
+**Current phase:** PASS F — Hub v0.2.1 release / live UI QA pending  
 **Repository:** `ConstantineJJ/Constantine-Hub`  
-**v0.1.4 release commit:** `b41a70a48e75c7678f58b7931053c4df49b0a5e6`
+**v0.1.4 release commit:** `b41a70a48e75c7678f58b7931053c4df49b0a5e6`  
+**v0.2.1 release commit:** `d380ebed48a4d69b10454fd60ec724a81b603311`
 
 ## Mission
 
@@ -362,3 +363,29 @@ Recommended next step:
 3. update the installed Hub through its own Stable updater;
 4. perform live DPI/visual/action/status QA and record screenshots/results;
 5. fix only reproducible UI regressions found in that pass; do not mix them with adapter lifecycle redesign.
+
+### v0.2.0 main release + v0.2.1 identity follow-up
+
+Repository/release verification completed after the initial PASS F handoff:
+
+- PR #6 was squash-merged to `main` as `1a12fb977759945dbdf0d5cf84e683dea4777227`;
+- main workflow run `36369483079` PASS, including Restore, Hub + Updater Build, portable `win-x64` Publish, bundled Godot/updater verification, release packaging and stable/dev publishing;
+- stable `v0.2.0` and dev `v0.2.0-dev.25` were published with ZIP + SHA-256 assets;
+- inspection of the packaged v0.2.0 payload confirmed the regular/waving PNG assets and exposed one identity mismatch: runtime window/taskbar/tray used the new regular cat, while the compile-time executable `CH_Icon.ico` was still the earlier icon;
+- follow-up PR #7 replaced the compile-time ICO with a 32×32 ICO generated from the same supplied regular-cat PNG and bumped Hub + Updater together to `0.2.1`;
+- PR #7 workflow run `36370279965` PASS; its packaged `CH_Icon.ico` was decoded and compared against the regular PNG downsampled to 32×32 with zero pixel difference;
+- PR #7 was squash-merged to `main` as `d380ebed48a4d69b10454fd60ec724a81b603311`;
+- main workflow run `36370408501` PASS with every build/package/release step green;
+- stable `v0.2.1` and dev `v0.2.1-dev.27` were published. Stable assets are `ConstantineHub-win-x64.zip` and `ConstantineHub-win-x64.sha256`; the release ZIP digest reported by GitHub is `sha256:9ca895d98d5447d4a0b98fc9a2ad5ab18843ebc404287c6dddbb70b5c026d61e`;
+- the final main CI artifact was unpacked and inspected: Hub + Updater executables, both watermelon-cat assets and the bundled Godot adapter payload are present; `CH_Icon.ico` is the regular cat and matches the packaged `WatermelonCat.png` at 32×32 exactly.
+
+Still open — live-machine evidence only:
+
+- install/update the currently running Hub to stable `v0.2.1` through its own updater;
+- confirm updater startup handshake and preservation of Local Files / Blender / Godot machine settings;
+- inspect the new shell on the user's actual Windows DPI/scaling for clipping, unwanted scrollbars and card sizing;
+- click through compact/expanded cards plus Start / Stop / Restart / Doctor / Settings / Verbose / Save Log;
+- confirm live Local Files, Blender and Godot status rendering;
+- confirm regular-cat appearance in Explorer/window/taskbar/tray and waving-cat appearance on Home.
+
+Do not mark PASS F live-accepted until those checks are observed.

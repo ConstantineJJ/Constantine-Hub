@@ -34,9 +34,9 @@ internal static class UiAcceptancePass
 
         if (shell.GetControlFromPosition(1, 1) is FlowLayoutPanel dashboard)
         {
-            PolishAdapter(form, dashboard, "LOCAL FILES MCP", renameLocalSettings: true);
-            PolishAdapter(form, dashboard, "BLENDER MCP");
-            PolishAdapter(form, dashboard, "GODOT MCP");
+            PolishAdapter(form, dashboard, "LOCAL FILES MCP", "LocalFilesIcon.png", renameLocalSettings: true);
+            PolishAdapter(form, dashboard, "BLENDER MCP", "BlenderIcon.png");
+            PolishAdapter(form, dashboard, "GODOT MCP", "GodotIcon.png");
         }
 
         form.PerformLayout();
@@ -123,6 +123,7 @@ internal static class UiAcceptancePass
         MainForm form,
         FlowLayoutPanel dashboard,
         string title,
+        string iconAsset,
         bool renameLocalSettings = false)
     {
         var host = dashboard.Controls
@@ -138,6 +139,32 @@ internal static class UiAcceptancePass
         if (inner is null)
             return;
 
+        var header = inner.GetControlFromPosition(0, 0) as TableLayoutPanel;
+        if (header is not null)
+        {
+            ReplaceServiceBadge(form, header, iconAsset);
+
+            var headerStart = header.Controls
+                .OfType<Button>()
+                .FirstOrDefault(button => button.Text.Equals("Start", StringComparison.OrdinalIgnoreCase));
+
+            foreach (var duplicateStart in Descendants<Button>(host)
+                         .Where(button => button.Text.Equals("Start", StringComparison.OrdinalIgnoreCase) &&
+                                          !ReferenceEquals(button, headerStart)))
+            {
+                duplicateStart.Visible = false;
+            }
+        }
+
+        if (renameLocalSettings)
+        {
+            foreach (var localSettings in Descendants<Button>(host)
+                         .Where(button => button.Text.Equals("Settings", StringComparison.OrdinalIgnoreCase)))
+            {
+                localSettings.Text = "Allowlist";
+            }
+        }
+
         var body = inner.GetControlFromPosition(0, 1) as Panel;
         if (body is null || body.Controls.Count == 0)
             return;
@@ -152,21 +179,6 @@ internal static class UiAcceptancePass
         var actions = legacyLayout.GetControlFromPosition(0, 2) as FlowLayoutPanel;
         if (actions is not null)
         {
-            var duplicateStart = actions.Controls
-                .OfType<Button>()
-                .FirstOrDefault(button => button.Text.Equals("Start", StringComparison.OrdinalIgnoreCase));
-            if (duplicateStart is not null)
-                duplicateStart.Visible = false;
-
-            if (renameLocalSettings)
-            {
-                var localSettings = actions.Controls
-                    .OfType<Button>()
-                    .FirstOrDefault(button => button.Text.Equals("Settings", StringComparison.OrdinalIgnoreCase));
-                if (localSettings is not null)
-                    localSettings.Text = "Allowlist";
-            }
-
             legacyLayout.RowStyles[2].SizeType = SizeType.Absolute;
             legacyLayout.RowStyles[2].Height = Scale(form, 54);
 
@@ -182,7 +194,6 @@ internal static class UiAcceptancePass
             }
         }
 
-        var header = inner.GetControlFromPosition(0, 0) as TableLayoutPanel;
         var toggle = header is null
             ? null
             : header.Controls.OfType<Button>().FirstOrDefault(button => button.Text is "⌄" or "⌃");
@@ -233,6 +244,64 @@ internal static class UiAcceptancePass
             toggle.Click += (_, _) => EnsureExpandedControlsVisible();
 
         EnsureExpandedControlsVisible();
+    }
+
+    private static void ReplaceServiceBadge(MainForm form, TableLayoutPanel header, string assetName)
+    {
+        var image = LoadAsset(assetName);
+        if (image is null)
+            return;
+
+        var current = header.GetControlFromPosition(0, 0);
+        if (current is PictureBox)
+        {
+            image.Dispose();
+            return;
+        }
+
+        if (current is not null)
+        {
+            header.Controls.Remove(current);
+            current.Dispose();
+        }
+
+        var icon = new PictureBox
+        {
+            Dock = DockStyle.Fill,
+            SizeMode = PictureBoxSizeMode.Zoom,
+            BackColor = Color.Transparent,
+            Image = image,
+            Margin = new Padding(0, 0, Scale(form, 8), 0),
+            TabStop = false
+        };
+        header.Controls.Add(icon, 0, 0);
+    }
+
+    private static Image? LoadAsset(string fileName)
+    {
+        var candidates = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, fileName),
+            Path.Combine(AppContext.BaseDirectory, "Assets", fileName)
+        };
+
+        foreach (var path in candidates)
+        {
+            try
+            {
+                if (!File.Exists(path))
+                    continue;
+
+                using var source = Image.FromFile(path);
+                return new Bitmap(source);
+            }
+            catch
+            {
+                // Optional UI art must never block Hub startup.
+            }
+        }
+
+        return null;
     }
 
     private static IEnumerable<T> Descendants<T>(Control root) where T : Control

@@ -13,6 +13,10 @@ internal sealed class MainForm : Form
     private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 1500 };
     private readonly RichTextBox _log = new();
     private readonly NotifyIcon _trayIcon = new();
+    private readonly UpdateService _updates = new();
+    private readonly List<string> _allLogLines = new();
+    private Button? _verboseButton;
+    private bool _verboseLogs;
 
     private readonly Label _localTunnel = new();
     private readonly Label _localRoots = new();
@@ -41,11 +45,11 @@ internal sealed class MainForm : Form
     {
         Text = "Constantine Hub";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(1100, 1120);
-        Size = new Size(1280, 1200);
+        MinimumSize = new Size(1040, 900);
+        Size = new Size(1180, 1020);
         BackColor = Color.FromArgb(22, 24, 29);
         ForeColor = Color.Gainsboro;
-        Font = new Font("Segoe UI", 15F);
+        Font = new Font("Segoe UI", 13.5F);
         AutoScaleMode = AutoScaleMode.Dpi;
         Icon = AppIconProvider.Current;
 
@@ -71,6 +75,7 @@ internal sealed class MainForm : Form
             Log($"Constantine Hub v{GetDisplayVersion()} started.");
             Log("Local Files MCP, Blender MCP and Godot MCP are managed adapters.");
             await RefreshStatusAsync();
+            _ = CheckForUpdatesAsync(silentWhenCurrent: true);
         };
 
         FormClosed += (_, _) =>
@@ -93,11 +98,11 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 6
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 250));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 286));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 320));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 210));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 232));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 282));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
 
@@ -108,12 +113,12 @@ internal sealed class MainForm : Form
             RowCount = 2,
             Margin = Padding.Empty
         };
-        header.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        header.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         header.Controls.Add(new Label
         {
             Text = "Constantine Hub",
-            Font = new Font("Segoe UI Semibold", 28F),
+            Font = new Font("Segoe UI Semibold", 24F),
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true
@@ -121,7 +126,7 @@ internal sealed class MainForm : Form
         header.Controls.Add(new Label
         {
             Text = $"Local MCP control plane  •  v{GetDisplayVersion()}",
-            Font = new Font("Segoe UI", 13F),
+            Font = new Font("Segoe UI", 11.5F),
             ForeColor = Muted,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.TopLeft,
@@ -144,6 +149,9 @@ internal sealed class MainForm : Form
         globalActions.Controls.Add(MakeButton("Start All", async (_, _) => await StartAllAsync(), primary: true));
         globalActions.Controls.Add(MakeButton("Stop Managed", async (_, _) => await StopAllOwnedAsync()));
         globalActions.Controls.Add(MakeButton("Refresh", async (_, _) => await RefreshStatusAsync()));
+        globalActions.Controls.Add(MakeButton("Check Updates", async (_, _) => await CheckForUpdatesAsync()));
+        _verboseButton = MakeButton("Verbose: Off", (_, _) => ToggleVerboseLogs());
+        globalActions.Controls.Add(_verboseButton);
         globalActions.Controls.Add(MakeButton("Save Log", (_, _) => SaveLog()));
         root.Controls.Add(globalActions, 0, 4);
 
@@ -205,17 +213,13 @@ internal sealed class MainForm : Form
         return card;
     }
 
-    private static Panel BuildCard(
-        string title,
-        int statusRows,
-        out TableLayoutPanel content,
-        out FlowLayoutPanel actions)
+    private static Panel BuildCard(string title, int statusRows, out TableLayoutPanel content, out FlowLayoutPanel actions)
     {
         var card = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = Color.FromArgb(30, 33, 40),
-            Padding = new Padding(16),
+            Padding = new Padding(12),
             Margin = new Padding(0, 0, 0, 10)
         };
 
@@ -225,16 +229,16 @@ internal sealed class MainForm : Form
             ColumnCount = 1,
             RowCount = 3
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         card.Controls.Add(layout);
 
         layout.Controls.Add(new Label
         {
             Text = title,
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI Semibold", 15F),
+            Font = new Font("Segoe UI Semibold", 13.5F),
             ForeColor = Color.White,
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true
@@ -247,10 +251,10 @@ internal sealed class MainForm : Form
             RowCount = statusRows,
             Margin = Padding.Empty
         };
-        content.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 205));
+        content.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180));
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (var i = 0; i < statusRows; i++)
-            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            content.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         layout.Controls.Add(content, 0, 1);
 
         actions = new FlowLayoutPanel
@@ -259,7 +263,7 @@ internal sealed class MainForm : Form
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             AutoScroll = true,
-            Padding = new Padding(0, 8, 0, 0)
+            Padding = new Padding(0, 4, 0, 0)
         };
         layout.Controls.Add(actions, 0, 2);
         return card;
@@ -274,7 +278,7 @@ internal sealed class MainForm : Form
             ForeColor = Color.Silver,
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true,
-            Margin = new Padding(3, 4, 6, 4)
+            Margin = new Padding(3, 2, 6, 2)
         }, 0, row);
 
         value.Dock = DockStyle.Fill;
@@ -282,7 +286,7 @@ internal sealed class MainForm : Form
         value.ForeColor = Muted;
         value.TextAlign = ContentAlignment.MiddleLeft;
         value.AutoEllipsis = true;
-        value.Margin = new Padding(3, 4, 6, 4);
+        value.Margin = new Padding(3, 2, 6, 2);
         table.Controls.Add(value, 1, row);
     }
 
@@ -291,9 +295,9 @@ internal sealed class MainForm : Form
         var button = new Button
         {
             Text = text,
-            Width = text.Length > 10 ? 190 : 145,
-            Height = 46,
-            Margin = new Padding(0, 0, 10, 0),
+            Width = text.Length > 10 ? 174 : 130,
+            Height = 40,
+            Margin = new Padding(0, 0, 8, 0),
             FlatStyle = FlatStyle.Flat,
             BackColor = primary ? Color.FromArgb(55, 106, 175) : Color.FromArgb(42, 46, 55),
             ForeColor = Color.White
@@ -324,24 +328,18 @@ internal sealed class MainForm : Form
     {
         if (WindowState != FormWindowState.Minimized)
             _restoreWindowState = WindowState;
-
         Hide();
         ShowInTaskbar = false;
-
         if (_trayHintShown)
             return;
-
         _trayHintShown = true;
         try
         {
-            _trayIcon.ShowBalloonTip(
-                1500,
-                "Constantine Hub",
-                "Hub is still running. Double-click the tray icon to restore it.",
-                ToolTipIcon.Info);
+            _trayIcon.ShowBalloonTip(1500, "Constantine Hub", "Hub is still running. Double-click the tray icon to restore it.", ToolTipIcon.Info);
         }
         catch
         {
+            // Notification support varies by Windows settings; tray behavior still works.
         }
     }
 
@@ -349,11 +347,8 @@ internal sealed class MainForm : Form
     {
         if (!Visible)
             Show();
-
         ShowInTaskbar = true;
-        WindowState = _restoreWindowState == FormWindowState.Minimized
-            ? FormWindowState.Normal
-            : _restoreWindowState;
+        WindowState = _restoreWindowState == FormWindowState.Minimized ? FormWindowState.Normal : _restoreWindowState;
         Activate();
         BringToFront();
     }
@@ -367,40 +362,21 @@ internal sealed class MainForm : Form
         {
             var local = await _localFiles.GetStatusAsync();
             SetState(_localTunnel, local.State, local.Summary);
-
             var summary = _localFiles.SettingsSummary;
-            SetStatus(_localRoots, summary.ConfigValid, summary.ConfigValid
-                ? $"{summary.RootCount} configured"
-                : summary.Message);
-            SetStatus(_localAccess, summary.ConfigValid,
-                summary.ConfigValid
-                    ? $"Read • Write {(summary.AnyWrite ? "ON" : "off")} • Delete {(summary.AnyDelete ? "ON" : "off")}"
-                    : "Config invalid");
+            SetStatus(_localRoots, summary.ConfigValid, summary.ConfigValid ? $"{summary.RootCount} configured" : summary.Message);
+            SetStatus(_localAccess, summary.ConfigValid, summary.ConfigValid ? $"Read • Write {(summary.AnyWrite ? "ON" : "off")} • Delete {(summary.AnyDelete ? "ON" : "off")}" : "Config invalid");
 
             var blender = await _blender.GetSnapshotAsync();
-            SetStatus(_blenderApp, blender.BlenderRunning,
-                blender.BlenderRunning ? "Running" : "Not running");
-            SetStatus(_blenderBridge, blender.BridgeConnected,
-                blender.BridgeConnected
-                    ? $"Connected {blender.BridgeEndpoint}"
-                    : $"Not listening on {blender.BridgeEndpoint}");
+            SetStatus(_blenderApp, blender.BlenderRunning, blender.BlenderRunning ? "Running" : "Not running");
+            SetStatus(_blenderBridge, blender.BridgeConnected, blender.BridgeConnected ? $"Connected {blender.BridgeEndpoint}" : $"Not listening on {blender.BridgeEndpoint}");
             SetState(_blenderTunnel, blender.TunnelStatus.State, blender.TunnelStatus.Summary);
-            SetStatus(_blenderSkills, blender.Skills.Success,
-                blender.Skills.Success
-                    ? $"{blender.Skills.VerifiedCount}/{blender.Skills.SourceCount} verified"
-                    : blender.Skills.Message);
+            SetStatus(_blenderSkills, blender.Skills.Success, blender.Skills.Success ? $"{blender.Skills.VerifiedCount}/{blender.Skills.SourceCount} verified" : blender.Skills.Message);
 
             var godot = await _godot.GetSnapshotAsync();
             SetStatus(_godotProject, godot.Configured, godot.ProjectRoot);
             SetStatus(_godotPlugin, godot.Plugin.Installed && godot.Plugin.Enabled, godot.Plugin.Message);
-            SetStatus(_godotEditor, godot.EditorBridgeConnected,
-                godot.EditorBridgeConnected
-                    ? $"Connected {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}"
-                    : $"Not listening on {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}");
-            SetStatus(_godotRuntime, godot.RuntimeBridgeConnected,
-                godot.RuntimeBridgeConnected
-                    ? $"Connected {_godot.Settings.RuntimeHost}:{_godot.Settings.RuntimePort}"
-                    : "Stopped / not connected");
+            SetStatus(_godotEditor, godot.EditorBridgeConnected, godot.EditorBridgeConnected ? $"Connected {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}" : $"Not listening on {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}");
+            SetOptionalStatus(_godotRuntime, godot.RuntimeBridgeConnected, godot.RuntimeBridgeConnected ? $"Connected {_godot.Settings.RuntimeHost}:{_godot.Settings.RuntimePort}" : "Idle / runtime not running");
             SetState(_godotTunnel, godot.TunnelStatus.State, godot.TunnelStatus.Summary);
             SetStatus(_godotSkills, godot.SkillsOk, godot.SkillsSummary);
         }
@@ -432,9 +408,7 @@ internal sealed class MainForm : Form
         await RefreshStatusAsync();
     }
 
-    private async Task RunAdapterActionQuietAsync(
-        string title,
-        Func<CancellationToken, Task> action)
+    private async Task RunAdapterActionQuietAsync(string title, Func<CancellationToken, Task> action)
     {
         try
         {
@@ -447,9 +421,7 @@ internal sealed class MainForm : Form
         }
     }
 
-    private async Task RunAdapterActionAsync(
-        string title,
-        Func<CancellationToken, Task> action)
+    private async Task RunAdapterActionAsync(string title, Func<CancellationToken, Task> action)
     {
         try
         {
@@ -472,8 +444,7 @@ internal sealed class MainForm : Form
         try
         {
             Log("Local Files Doctor requested.");
-            var result = await _localFiles.DoctorAsync();
-            Log(result);
+            Log(await _localFiles.DoctorAsync());
         }
         catch (Exception ex)
         {
@@ -491,8 +462,7 @@ internal sealed class MainForm : Form
         try
         {
             Log("Blender Doctor requested.");
-            var result = await _blender.DoctorAsync();
-            Log(result);
+            Log(await _blender.DoctorAsync());
         }
         catch (Exception ex)
         {
@@ -510,8 +480,7 @@ internal sealed class MainForm : Form
         try
         {
             Log("Godot Doctor requested.");
-            var result = await _godot.DoctorAsync();
-            Log(result);
+            Log(await _godot.DoctorAsync());
         }
         catch (Exception ex)
         {
@@ -530,13 +499,7 @@ internal sealed class MainForm : Form
         {
             var status = _godot.InstallOrUpdatePlugin();
             Log("Godot plugin: " + status.Message);
-            MessageBox.Show(
-                this,
-                status.Message + Environment.NewLine + Environment.NewLine +
-                "If the Godot editor is already open, reload or restart the project so the editor plugin can activate.",
-                "Godot plugin",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            MessageBox.Show(this, status.Message + Environment.NewLine + Environment.NewLine + "If the Godot editor is already open, reload or restart the project so the editor plugin can activate.", "Godot plugin", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
@@ -569,21 +532,77 @@ internal sealed class MainForm : Form
         }
         else if (before.State == AdapterState.External)
         {
-            MessageBox.Show(
-                this,
-                "Settings were saved. The current Local Files tunnel is external/adopted, so Hub will not kill it. Restart that tunnel once to load the new allowlist, or stop it and then press Start in Hub.",
-                "Restart required",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            MessageBox.Show(this, "Settings were saved. The current Local Files tunnel is external/adopted, so Hub will not kill it. Restart that tunnel once to load the new allowlist, or stop it and then press Start in Hub.", "Restart required", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
-
         await RefreshStatusAsync();
+    }
+
+    private async Task CheckForUpdatesAsync(bool silentWhenCurrent = false)
+    {
+        try
+        {
+            var current = typeof(MainForm).Assembly.GetName().Version ?? new Version(0, 1, 0);
+            Log("Checking GitHub Releases for Constantine Hub updates…");
+            var update = await _updates.CheckForStableUpdateAsync(current);
+            if (update is null)
+            {
+                Log("No newer stable release is available.");
+                if (!silentWhenCurrent)
+                    MessageBox.Show(this, "You already have the latest stable Constantine Hub release.", "Updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            Log($"Update available: {GetDisplayVersion()} → {update.Tag}");
+            var answer = MessageBox.Show(this, $"A new Constantine Hub release is available.\n\nCurrent: {GetDisplayVersion()}\nAvailable: {update.Tag}\n\nDownload, verify SHA-256 and install it now?", "Update available", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+            if (answer != DialogResult.Yes)
+                return;
+
+            Log("Downloading and verifying update package…");
+            await _updates.StageAndLaunchAsync(update, current);
+            Log("Updater started. Constantine Hub will now exit and restart.");
+            _trayIcon.Visible = false;
+            Application.Exit();
+        }
+        catch (Exception ex)
+        {
+            Log("Update FAILED: " + ex.Message);
+            MessageBox.Show(this, ex.Message, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void ToggleVerboseLogs()
+    {
+        _verboseLogs = !_verboseLogs;
+        if (_verboseButton is not null)
+            _verboseButton.Text = _verboseLogs ? "Verbose: On" : "Verbose: Off";
+
+        _log.Clear();
+        foreach (var line in _allLogLines)
+        {
+            if (_verboseLogs || !IsVerboseTunnelLine(line))
+                _log.AppendText(line + Environment.NewLine);
+        }
+        _log.SelectionStart = _log.TextLength;
+        _log.ScrollToCaret();
+    }
+
+    private static bool IsVerboseTunnelLine(string line)
+    {
+        if (!line.Contains("{\"time\":", StringComparison.Ordinal))
+            return false;
+        return !line.Contains("\"level\":\"ERROR\"", StringComparison.OrdinalIgnoreCase) && !line.Contains("FAILED", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void SetStatus(Label label, bool ok, string text)
     {
         label.Text = "● " + text;
         label.ForeColor = ok ? Good : Bad;
+    }
+
+    private static void SetOptionalStatus(Label label, bool active, string text)
+    {
+        label.Text = "● " + text;
+        label.ForeColor = active ? Good : Warn;
     }
 
     private static void SetState(Label label, AdapterState state, string text)
@@ -606,9 +625,14 @@ internal sealed class MainForm : Form
             return;
         }
 
-        _log.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
-        _log.SelectionStart = _log.TextLength;
-        _log.ScrollToCaret();
+        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+        _allLogLines.Add(line);
+        if (_verboseLogs || !IsVerboseTunnelLine(line))
+        {
+            _log.AppendText(line + Environment.NewLine);
+            _log.SelectionStart = _log.TextLength;
+            _log.ScrollToCaret();
+        }
     }
 
     private void LogFromAnyThread(string message) => Log(message);
@@ -624,8 +648,8 @@ internal sealed class MainForm : Form
         if (dialog.ShowDialog(this) != DialogResult.OK)
             return;
 
-        File.WriteAllText(dialog.FileName, _log.Text);
-        Log("Log saved: " + dialog.FileName);
+        File.WriteAllText(dialog.FileName, string.Join(Environment.NewLine, _allLogLines) + Environment.NewLine);
+        Log("Log saved (full diagnostics): " + dialog.FileName);
     }
 
     private static string GetDisplayVersion()

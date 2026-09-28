@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ConstantineHub</RootNamespace>
     <AssemblyName>ConstantineHub</AssemblyName>
-    <Version>0.2.2</Version>
-    <AssemblyVersion>0.2.2.0</AssemblyVersion>
-    <FileVersion>0.2.2.0</FileVersion>
+    <Version>0.2.3</Version>
+    <AssemblyVersion>0.2.3.0</AssemblyVersion>
+    <FileVersion>0.2.3.0</FileVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="Exists('Assets\CH_Icon.ico')">
@@ -31,6 +31,21 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <TargetPath>WatermelonCatWaving.png</TargetPath>
+    </None>
+    <None Update="Assets\LocalFilesIcon.png" Condition="Exists('Assets\LocalFilesIcon.png')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>LocalFilesIcon.png</TargetPath>
+    </None>
+    <None Update="Assets\BlenderIcon.png" Condition="Exists('Assets\BlenderIcon.png')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>BlenderIcon.png</TargetPath>
+    </None>
+    <None Update="Assets\GodotIcon.png" Condition="Exists('Assets\GodotIcon.png')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>GodotIcon.png</TargetPath>
     </None>
   </ItemGroup>
 

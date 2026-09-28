@@ -1,7 +1,7 @@
 # Constantine Hub — Project Pulse
 
 **Updated:** 2026-09-28  
-**Current phase:** PASS E — Hub v0.1.5 DPI layout fix + live updater QA  
+**Current phase:** PASS F — Hub v0.2.0 UI shell pass / PR #6  
 **Repository:** `ConstantineJJ/Constantine-Hub`  
 **v0.1.4 release commit:** `b41a70a48e75c7678f58b7931053c4df49b0a5e6`
 
@@ -304,3 +304,61 @@ v0.1.5 fix:
 - bump both Hub and Updater to `0.1.5`.
 
 Release goal: merge only after Windows CI passes Hub + Updater build/publish/package checks. Once stable `v0.1.5` exists, use the already-installed v0.1.4 `Check Updates` path to perform the first real in-app Stable auto-update test, including SHA-256 verification, restart, settings preservation and updater startup handshake.
+
+---
+
+## PASS F — Constantine Hub v0.2.0 UI shell pass
+
+Branch: `ui/v0.2.0-shell-pass`  
+PR: `#6`  
+Initial UI commit: `8a5ef4b2d607c5a94ddcfa55f35f1d0dabd19c88`
+
+Implemented as a presentation-layer shell over the existing `MainForm` controls rather than a rewrite of adapter/runtime services:
+
+- `UI_Small`-inspired dark engineering-tool shell with left navigation, top status bar, center dashboard and right status rail;
+- compact/expanded Local Files / Blender / Godot cards; expanded cards reuse the existing status controls and action handlers;
+- compact Start actions forward to the existing per-adapter Start controls;
+- diagnostics log is collapsible; existing Normal/Verbose and Save Log controls are retained in the quick-actions rail;
+- top-level version, update state, project/profile and Settings access added;
+- regular watermelon cat added as runtime window/taskbar/tray icon source and dashboard brand asset;
+- waving watermelon cat added to the dashboard welcome area; the committed dashboard copy is an optimized 64×64 derivative of the supplied 128×128 source;
+- Hub and Updater version synchronized to `0.2.0`;
+- existing `CH_Icon.ico` remains the compile-time executable icon fallback; runtime window/taskbar/tray identity now prefers the new regular-cat PNG.
+
+Preservation boundary:
+
+- no adapter implementation or tunnel ownership logic was changed;
+- Local Files allowlist permissions remain in the existing Settings form;
+- Start / Stop / Restart / Doctor handlers are reused, not reimplemented;
+- Start All / Stop Managed semantics are reused;
+- external/adopted process protection remains in the existing core;
+- updater service/protocol, release asset names, SHA-256 verification, rollback/startup handshake and AppData storage locations were not changed.
+
+Verification performed:
+
+- PR diff reviewed: seven implementation files in the initial commit, with UI work isolated to the new shell plus icon/version integration;
+- GitHub Actions run `36369191688` PASS on `windows-latest`;
+- .NET 10 Restore PASS;
+- Hub/Updater Build PASS;
+- portable `win-x64` Publish PASS;
+- bundled Godot adapter + updater verification PASS;
+- release packaging and CI artifact upload PASS;
+- stable/dev publishing correctly SKIP on the PR branch.
+
+Open gates / risks — do not mark these PASS without live evidence:
+
+- live Windows visual QA of the new shell has not yet run;
+- high-DPI clipping/scroll behavior needs inspection on the user's actual display scaling;
+- compact/expanded card behavior and all reused buttons need live click-through QA;
+- Local Files / Blender / Godot runtime statuses need live confirmation in the new shell;
+- the Stable `v0.2.0` self-update, startup handshake and AppData preservation can only be accepted after `main` publishes the release and the installed Hub performs the update;
+- the runtime PNG-derived icon path is compiled and packaged by CI, but taskbar/tray appearance still needs live Windows inspection;
+- top Settings is a convenience menu over existing actions; navigation remains intentionally shallow in this pass rather than introducing placeholder-only pages.
+
+Recommended next step:
+
+1. merge PR #6 only while its CI remains green;
+2. let the `main` workflow publish stable `v0.2.0`;
+3. update the installed Hub through its own Stable updater;
+4. perform live DPI/visual/action/status QA and record screenshots/results;
+5. fix only reproducible UI regressions found in that pass; do not mix them with adapter lifecycle redesign.

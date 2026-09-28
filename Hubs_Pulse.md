@@ -1,9 +1,9 @@
 # Constantine Hub — Project Pulse
 
 **Updated:** 2026-09-28  
-**Current phase:** PASS D — Godot MCP live integration  
+**Current phase:** PASS E — Hub v0.1.4 update/release hardening  
 **Repository:** `ConstantineJJ/Constantine-Hub`  
-**Main head:** `354caf4c2a348cee6868e98b6c84bd6f0b88d687`
+**Main head:** pending v0.1.4 merge
 
 ## Mission
 
@@ -244,3 +244,34 @@ Next sequence:
 - expose a separate canonical-contract status for Blender in Hub;
 - retire standalone Blender MCP_Con after sufficient Hub cold-start/restart QA;
 - add release packaging/patch/update ergonomics after adapter behavior stabilizes.
+
+---
+
+## PASS E — Constantine Hub v0.1.4
+
+Requested after live v0.1.3 QA.
+
+Implemented locally for the v0.1.4 branch:
+
+- synchronized project version to `0.1.4`;
+- compact UI pass: main UI font reduced from 15 pt to 13.5 pt, card/status/button spacing tightened so the complete Godot card fits without vertical scrolling at the normal window size; log font remains `Cascadia Mono 9.5 pt`;
+- Godot runtime bridge idle state changed from red failure semantics to amber `Idle / runtime not running` when no runtime session is active;
+- Normal/Verbose log mode added: Normal hides tunnel-client FX/JSON noise, Verbose reveals it; Save Log always writes the complete diagnostic history;
+- stable update check against GitHub Releases added on startup and through `Check Updates`;
+- update package requires both `ConstantineHub-win-x64.zip` and `ConstantineHub-win-x64.sha256`; SHA-256 is verified before installation;
+- added separate `ConstantineHub.Updater.exe` bootstrapper so the running Hub never tries to replace itself;
+- updater waits for the old Hub to exit, backs up replaced files, copies the staged payload atomically per file, restarts the new Hub and waits for an explicit startup marker;
+- if the new build fails to report startup within the timeout, updater restores the previous files and restarts the rolled-back Hub;
+- updater touches installation payload only; user configuration remains under `%APPDATA%` / `%LOCALAPPDATA%` outside the release payload;
+- CI release pipeline now publishes a zipped portable package plus SHA-256. On a new semantic version in `main`, it creates the stable `vX.Y.Z` GitHub Release; each main build also creates a prerelease `vX.Y.Z-dev.<run_number>` as a future Dev-channel foundation.
+
+Review note: the repository had drifted behind the live binary (`main` still declared v0.1.2 while the tested application identified as v0.1.3). v0.1.4 is the reconciliation point: source version, CI artifact and release tag must match before the updater is accepted.
+
+Acceptance gate for v0.1.4:
+
+1. PR CI must build both Hub and Updater;
+2. published package must contain `ConstantineHub.Updater.exe` and the Godot adapter payload;
+3. main CI must create `v0.1.4` release assets with matching SHA-256;
+4. current v0.1.3 installation must detect `v0.1.4`;
+5. in-app update must restart into v0.1.4 and preserve Local Files/Blender/Godot machine settings;
+6. one forced bad-start test should confirm rollback before updater PASS is final.

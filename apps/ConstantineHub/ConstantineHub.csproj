@@ -7,19 +7,30 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ConstantineHub</RootNamespace>
     <AssemblyName>ConstantineHub</AssemblyName>
-    <Version>0.1.5</Version>
-    <AssemblyVersion>0.1.5.0</AssemblyVersion>
-    <FileVersion>0.1.5.0</FileVersion>
+    <Version>0.2.0</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <FileVersion>0.2.0.0</FileVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="Exists('Assets\CH_Icon.ico')">
     <ApplicationIcon>Assets\CH_Icon.ico</ApplicationIcon>
   </PropertyGroup>
 
-  <ItemGroup Condition="Exists('Assets\CH_Icon.ico')">
-    <None Update="Assets\CH_Icon.ico">
+  <ItemGroup>
+    <None Update="Assets\CH_Icon.ico" Condition="Exists('Assets\CH_Icon.ico')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
       <TargetPath>CH_Icon.ico</TargetPath>
+    </None>
+    <None Update="Assets\WatermelonCat.png" Condition="Exists('Assets\WatermelonCat.png')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>WatermelonCat.png</TargetPath>
+    </None>
+    <None Update="Assets\WatermelonCatWaving.png" Condition="Exists('Assets\WatermelonCatWaving.png')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>WatermelonCatWaving.png</TargetPath>
     </None>
   </ItemGroup>
 

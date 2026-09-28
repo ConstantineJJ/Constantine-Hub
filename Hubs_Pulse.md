@@ -1,7 +1,7 @@
 # Constantine Hub — Project Pulse
 
 **Updated:** 2026-09-28  
-**Current phase:** PASS E — Hub v0.1.4 live updater QA  
+**Current phase:** PASS E — Hub v0.1.5 DPI layout fix + live updater QA  
 **Repository:** `ConstantineJJ/Constantine-Hub`  
 **v0.1.4 release commit:** `b41a70a48e75c7678f58b7931053c4df49b0a5e6`
 
@@ -285,3 +285,22 @@ Acceptance gate for v0.1.4:
 - Dev prerelease foundation also published as `v0.1.4-dev.20`.
 - First migration from the currently installed v0.1.3 to v0.1.4 is manual because v0.1.3 predates the updater. From v0.1.4 onward the Stable updater path can be tested in-app.
 - Acceptance gates 1–3 are PASS. Gates 4–6 remain live-machine QA: updater discovery on a later release, settings preservation/restart, and forced rollback test.
+
+---
+
+## Patch v0.1.5 — DPI-safe status layout + updater test
+
+Live v0.1.4 QA on the user's Windows high-DPI desktop exposed a second layout regression: status text inside all three MCP cards was clipped vertically, and longer left-column labels such as `Allowed roots`, `Editor bridge`, `Runtime bridge` and `Skills/contracts` could be clipped horizontally.
+
+Root cause: v0.1.4 compacted status geometry with hard-coded `30 px` row heights and a fixed `180 px` label column while keeping a 13.5 pt form font under `AutoScaleMode.Dpi`. At the user's DPI/font metrics, the rendered text exceeded those fixed cells.
+
+v0.1.5 fix:
+
+- replace the fixed status-row height with a DPI-aware height derived from `TextRenderer.MeasureText(..., Font)` plus safety padding;
+- size each card row from the measured status-row height so the Local Files / Blender / Godot cards remain internally consistent;
+- change the left status-name column from fixed `180 px` to `AutoSize` and make name labels participate in preferred-size calculation;
+- keep the value column percentage-based so long status values still get the remaining width;
+- increase the normal/minimum window height modestly so all three cards, including the six-row Godot card, remain fully visible while preserving a useful log pane;
+- bump both Hub and Updater to `0.1.5`.
+
+Release goal: merge only after Windows CI passes Hub + Updater build/publish/package checks. Once stable `v0.1.5` exists, use the already-installed v0.1.4 `Check Updates` path to perform the first real in-app Stable auto-update test, including SHA-256 verification, restart, settings preservation and updater startup handshake.

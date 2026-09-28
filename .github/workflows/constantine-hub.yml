@@ -5,13 +5,18 @@ on:
     branches: [main]
     paths:
       - 'apps/ConstantineHub/**'
+      - 'apps/ConstantineHub.Updater/**'
       - 'adapters/godot-mcp/**'
       - '.github/workflows/constantine-hub.yml'
   pull_request:
     paths:
       - 'apps/ConstantineHub/**'
+      - 'apps/ConstantineHub.Updater/**'
       - 'adapters/godot-mcp/**'
       - '.github/workflows/constantine-hub.yml'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -25,24 +30,64 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore
-        run: dotnet restore apps/ConstantineHub/ConstantineHub.csproj
+        run: |
+          dotnet restore apps/ConstantineHub/ConstantineHub.csproj
+          dotnet restore apps/ConstantineHub.Updater/ConstantineHub.Updater.csproj
 
       - name: Build
-        run: dotnet build apps/ConstantineHub/ConstantineHub.csproj -c Release --no-restore
+        run: |
+          dotnet build apps/ConstantineHub/ConstantineHub.csproj -c Release --no-restore
+          dotnet build apps/ConstantineHub.Updater/ConstantineHub.Updater.csproj -c Release --no-restore
 
       - name: Publish portable win-x64
-        run: dotnet publish apps/ConstantineHub/ConstantineHub.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o artifacts/ConstantineHub-win-x64
-
-      - name: Verify bundled Godot adapter
         shell: pwsh
         run: |
-          $root = 'artifacts/ConstantineHub-win-x64/adapters/godot-mcp'
-          if (-not (Test-Path "$root/run_godot_mcp.cmd")) { throw 'Godot MCP launcher was not bundled.' }
-          if (-not (Test-Path "$root/project-addon/addons/constantine_mcp/plugin.cfg")) { throw 'Godot addon was not bundled.' }
+          dotnet publish apps/ConstantineHub/ConstantineHub.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o artifacts/ConstantineHub-win-x64
+          dotnet publish apps/ConstantineHub.Updater/ConstantineHub.Updater.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o artifacts/Updater
+          Copy-Item 'artifacts/Updater/*' 'artifacts/ConstantineHub-win-x64/' -Recurse -Force
 
-      - name: Upload artifact
+      - name: Verify bundled Godot adapter and updater
+        shell: pwsh
+        run: |
+          $root = 'artifacts/ConstantineHub-win-x64'
+          if (-not (Test-Path "$root/adapters/godot-mcp/run_godot_mcp.cmd")) { throw 'Godot MCP launcher was not bundled.' }
+          if (-not (Test-Path "$root/adapters/godot-mcp/project-addon/addons/constantine_mcp/plugin.cfg")) { throw 'Godot addon was not bundled.' }
+          if (-not (Test-Path "$root/ConstantineHub.Updater.exe")) { throw 'Constantine Hub updater was not bundled.' }
+
+      - name: Read version and package release
+        shell: pwsh
+        run: |
+          $match = Select-String -Path 'apps/ConstantineHub/ConstantineHub.csproj' -Pattern '<Version>([^<]+)</Version>'
+          if (-not $match) { throw 'Hub version was not found in csproj.' }
+          $version = $match.Matches[0].Groups[1].Value
+          "HUB_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $zip = 'artifacts/ConstantineHub-win-x64.zip'
+          Compress-Archive -Path 'artifacts/ConstantineHub-win-x64/*' -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  ConstantineHub-win-x64.zip" | Set-Content 'artifacts/ConstantineHub-win-x64.sha256' -Encoding ascii
+
+      - name: Upload CI artifact
         uses: actions/upload-artifact@v4
         with:
           name: ConstantineHub-win-x64
           path: artifacts/ConstantineHub-win-x64
           if-no-files-found: error
+
+      - name: Publish stable and dev releases
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $stableTag = "v$env:HUB_VERSION"
+          $zip = 'artifacts/ConstantineHub-win-x64.zip'
+          $sha = 'artifacts/ConstantineHub-win-x64.sha256'
+
+          gh release view $stableTag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $stableTag $zip $sha --target '${{ github.sha }}' --title "Constantine Hub $stableTag" --generate-notes
+          }
+
+          $devTag = "v$env:HUB_VERSION-dev.${{ github.run_number }}"
+          gh release create $devTag $zip $sha --target '${{ github.sha }}' --title "Constantine Hub $devTag" --prerelease --generate-notes

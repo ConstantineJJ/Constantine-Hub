@@ -1,5 +1,6 @@
 using ConstantineHub;
 using System.Diagnostics;
+using ConstantineHub.Adapters.Godot;
 
 namespace ConstantineHub.SmokeTests;
 
@@ -13,6 +14,16 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
         try
         {
+            // A hosted CI runner has no workstation Godot project/configuration.
+            var fixture = Path.Combine(AppContext.BaseDirectory, "smoke-fixture");
+            Directory.CreateDirectory(fixture);
+            File.WriteAllText(Path.Combine(fixture, "project.godot"), "[application]\nconfig/name=\"Hub smoke tests\"\n");
+            Environment.SetEnvironmentVariable("CONSTANTINE_GODOT_MCP_CONFIG", Path.Combine(fixture, "godot.json"));
+            Environment.SetEnvironmentVariable("CONSTANTINE_FILES_CONFIG", Path.Combine(fixture, "files.json"));
+            Environment.SetEnvironmentVariable("TUNNEL_CLIENT_PROFILE_DIR", fixture);
+            Environment.SetEnvironmentVariable("TUNNEL_CLIENT_PROFILE_FILE", null);
+            GodotSettingsStore.Save(new GodotSettings(fixture, "smoke-godot", "tunnel_smoke", 8082,
+                "127.0.0.1", 6262, "127.0.0.1", 6263, null, fixture, false));
             using var form = new MainForm { ShowInTaskbar = false };
             UiPass.Apply(form);
             UiAcceptancePass.Apply(form);

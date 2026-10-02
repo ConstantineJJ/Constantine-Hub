@@ -177,6 +177,7 @@ internal sealed class MainForm : Form
         actions.Controls.Add(MakeButton("Stop", async (_, _) => await RunAdapterActionAsync("Stop Local Files", _localFiles.StopAsync)));
         actions.Controls.Add(MakeButton("Restart", async (_, _) => await RunAdapterActionAsync("Restart Local Files", _localFiles.RestartAsync)));
         actions.Controls.Add(MakeButton("Doctor", async (_, _) => await DoctorLocalFilesAsync()));
+        actions.Controls.Add(MakeButton("Install Plugin", async (_, _) => await InstallTunnelPluginAsync()));
         actions.Controls.Add(MakeButton("Settings", async (_, _) => await OpenLocalFilesSettingsAsync()));
         return card;
     }
@@ -319,8 +320,16 @@ internal sealed class MainForm : Form
             ForeColor = Color.White
         };
         button.FlatAppearance.BorderColor = Color.FromArgb(70, 74, 85);
+        button.Tag = handler;
         button.Click += handler;
         return button;
+    }
+
+    // Shell actions must work even when their legacy button is in a collapsed card.
+    internal static void InvokeButtonAction(Button? button)
+    {
+        if (button is { IsDisposed: false, Enabled: true, Tag: EventHandler action })
+            action(button, EventArgs.Empty);
     }
 
     private void ConfigureTray()
@@ -480,7 +489,7 @@ internal sealed class MainForm : Form
         catch (Exception ex)
         {
             Log(title + " FAILED: " + ex.Message);
-            MessageBox.Show(this, ex.Message, title, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ErrorReporter.Show(ex, title, this);
         }
         finally
         {
@@ -565,6 +574,21 @@ internal sealed class MainForm : Form
             MessageBox.Show(this, ex.Message, "Godot plugin", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         _ = RefreshStatusAsync();
+    }
+
+    private async Task InstallTunnelPluginAsync()
+    {
+        await RunAdapterActionAsync("Install Tunnel MCP plugin", async cancellationToken =>
+        {
+            var executable = ExecutableLocator.FindTunnelClient()
+                ?? throw new FileNotFoundException("tunnel-client.exe was not found.");
+            var result = await ProcessCapture.RunAsync(executable, ["codex", "plugin", "install"], cancellationToken);
+            Log(result.Output);
+            if (result.ExitCode != 0)
+                throw new InvalidOperationException($"Plugin installer exited with code {result.ExitCode}.\n{result.Output}");
+            MessageBox.Show(this, "Tunnel MCP plugin installed. Restart Codex to load it.",
+                "Tunnel MCP plugin", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        });
     }
 
     private async Task OpenLocalFilesSettingsAsync()

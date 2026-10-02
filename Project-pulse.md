@@ -2,6 +2,9 @@
 
 Updated: 2026-10-02 (Europe/Riga). Feature version: 0.2.7.
 
+Published: [stable v0.2.7](https://github.com/ConstantineJJ/Constantine-Hub/releases/tag/v0.2.7),
+code commit `497b353e25d4bf68496c2549106b4fd35c2a4a84` (PR #13).
+
 ## Current State
 
 **Skills / Contracts: implemented; scoped QA PASS.** Two compact top-bar buttons
@@ -41,7 +44,7 @@ Changed modules: `Core/CanonicalKnowledge.cs`, `MainForm.cs`, `UiPass.cs`,
 | Start | Fixed in 0.2.5: collapsed-card action dispatch. All three collapsed/expanded Start regressions PASS; user confirms 0.2.6 works. |
 | Stop / Restart | Dispatch regression PASS for all three adapters. Ownership/lifecycle code unchanged; full live engine lifecycle is not certified by these dispatch tests. |
 | Connection status | Fixed in 0.2.6: offline bridges and stopped tunnels are distinct from setup/service failures. Native and automated status checks PASS. |
-| Updater | Stable 0.2.6 build/package/SHA-256 previously verified; user confirms working app. Protocol, rollback and asset names unchanged in this pass. Normal CI publishes 0.2.7; installed 0.2.7 update acceptance remains a user-side check. |
+| Updater | Stable 0.2.7 published; main CI build/package PASS and downloaded ZIP SHA-256 matches. Protocol, rollback and asset names unchanged. User confirmed 0.2.6 works; installed 0.2.7 update acceptance remains a user-side check. |
 
 ## QA evidence and remaining checks
 
@@ -54,6 +57,15 @@ recorded both paths. Native missing-root click showed a readable warning, logged
 the path/exception and returned to a responsive Hub after OK. Native Settings
 open/close and dashboard presentation PASS. Existing UI/install regressions PASS;
 buttons fit the minimum window size. No drive-specific literal in new UI/action code.
+
+GitHub PR workflow `37022506054` and main release workflow `37022693428`: PASS.
+Downloaded release payload contains Hub 0.2.7 at the expected code commit, Updater,
+Tomlyn and the bundled Godot adapter. ZIP SHA-256:
+`0fef488edea055b330ff2a348a74b0d475709adfbcabcee56ccdd42189432480`.
+Native Explorer/error/Settings checks used the local portable publish. Execution of
+the downloaded GitHub executable was SKIP: automatic approval review blocked the
+combined download-and-launch command without a more specific reason. The archive
+was instead verified read only; installed-release acceptance remains below.
 
 Open reproducible bugs in this scoped pass: none observed. Remaining QA gates:
 installed 0.2.7 auto-update and retained settings; full Blender/Godot Start/Stop/Restart

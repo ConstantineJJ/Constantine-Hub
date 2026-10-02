@@ -17,6 +17,9 @@ internal sealed class MainForm : Form
     private readonly List<string> _allLogLines = new();
     private Button? _verboseButton;
     private bool _verboseLogs;
+    private IReadOnlyList<ServiceConnection> _connections = [];
+    private readonly Dictionary<string, string> _actionErrors = new();
+    internal ConnectionOverview Connections => ConnectionOverview.Build(_connections, _actionErrors);
 
     private readonly Label _localTunnel = new();
     private readonly Label _localRoots = new();
@@ -408,9 +411,9 @@ internal sealed class MainForm : Form
                     : "Config invalid");
 
             var blender = await _blender.GetSnapshotAsync();
-            SetStatus(_blenderApp, blender.BlenderRunning,
+            SetOptionalStatus(_blenderApp, blender.BlenderRunning,
                 blender.BlenderRunning ? "Running" : "Not running");
-            SetStatus(_blenderBridge, blender.BridgeConnected,
+            SetOptionalStatus(_blenderBridge, blender.BridgeConnected,
                 blender.BridgeConnected
                     ? $"Connected {blender.BridgeEndpoint}"
                     : $"Not listening on {blender.BridgeEndpoint}");
@@ -423,7 +426,7 @@ internal sealed class MainForm : Form
             var godot = await _godot.GetSnapshotAsync();
             SetStatus(_godotProject, godot.Configured, godot.ProjectRoot);
             SetStatus(_godotPlugin, godot.Plugin.Installed && godot.Plugin.Enabled, godot.Plugin.Message);
-            SetStatus(_godotEditor, godot.EditorBridgeConnected,
+            SetOptionalStatus(_godotEditor, godot.EditorBridgeConnected,
                 godot.EditorBridgeConnected
                     ? $"Connected {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}"
                     : $"Not listening on {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}");
@@ -433,10 +436,21 @@ internal sealed class MainForm : Form
                     : "Idle / runtime not running");
             SetState(_godotTunnel, godot.TunnelStatus.State, godot.TunnelStatus.Summary);
             SetStatus(_godotSkills, godot.SkillsOk, godot.SkillsSummary);
+            _connections = [
+                new("Local Files", local.State, SetupIssue: summary.ConfigValid ? null : summary.Message),
+                new("Blender", blender.TunnelStatus.State, blender.BridgeConnected,
+                    blender.Skills.Success ? null : blender.Skills.Message),
+                new("Godot editor", godot.TunnelStatus.State, godot.EditorBridgeConnected,
+                    !godot.Configured ? "Project not configured" :
+                    !godot.Plugin.Installed || !godot.Plugin.Enabled ? godot.Plugin.Message :
+                    !godot.SkillsOk ? godot.SkillsSummary : null)
+            ];
+            _actionErrors.Remove("Status check");
         }
         catch (Exception ex)
         {
             Log("Status refresh failed: " + ex.Message);
+            _actionErrors["Status check"] = ex.Message;
         }
         finally
         {
@@ -470,10 +484,12 @@ internal sealed class MainForm : Form
         {
             Log(title + " requested.");
             await action(CancellationToken.None);
+            _actionErrors.Remove(ActionKey(title, action));
         }
         catch (Exception ex)
         {
             Log(title + " FAILED: " + ex.Message);
+            _actionErrors[ActionKey(title, action)] = ex.Message;
         }
     }
 
@@ -485,10 +501,12 @@ internal sealed class MainForm : Form
         {
             Log(title + " requested.");
             await action(CancellationToken.None);
+            _actionErrors.Remove(ActionKey(title, action));
         }
         catch (Exception ex)
         {
             Log(title + " FAILED: " + ex.Message);
+            _actionErrors[ActionKey(title, action)] = ex.Message;
             ErrorReporter.Show(ex, title, this);
         }
         finally
@@ -496,6 +514,9 @@ internal sealed class MainForm : Form
             await RefreshStatusAsync();
         }
     }
+
+    private static string ActionKey(string title, Func<CancellationToken, Task> action)
+        => action.Target is IHubAdapter adapter ? adapter.DisplayName : title;
 
     private async Task DoctorLocalFilesAsync()
     {
@@ -582,10 +603,7 @@ internal sealed class MainForm : Form
         {
             var executable = ExecutableLocator.FindTunnelClient()
                 ?? throw new FileNotFoundException("tunnel-client.exe was not found.");
-            var result = await ProcessCapture.RunAsync(executable, ["codex", "plugin", "install"], cancellationToken);
-            Log(result.Output);
-            if (result.ExitCode != 0)
-                throw new InvalidOperationException($"Plugin installer exited with code {result.ExitCode}.\n{result.Output}");
+            await TunnelPluginInstaller.InstallAsync(executable, log: Log, cancellationToken: cancellationToken);
             MessageBox.Show(this, "Tunnel MCP plugin installed. Restart Codex to load it.",
                 "Tunnel MCP plugin", MessageBoxButtons.OK, MessageBoxIcon.Information);
         });

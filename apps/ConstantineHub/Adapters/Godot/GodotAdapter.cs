@@ -200,7 +200,7 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
     {
         try
         {
-            var root = Path.GetFullPath(settings.ToolsCRoot);
+            var root = CanonicalKnowledge.GodotRoot(settings);
             var required = new[]
             {
                 Path.Combine(root, "docs", "foundation.md"),

@@ -1,5 +1,9 @@
 # Constantine Hub — Project Pulse
 
+Current state as of 2026-10-02 is maintained in [Project-pulse.md](Project-pulse.md).
+The entries below are historical snapshots; their pending gates are not the current
+Skills / Contracts feature status.
+
 **Updated:** 2026-09-28  
 **Current phase:** PASS F — Hub v0.2.1 release / live UI QA pending  
 **Repository:** `ConstantineJJ/Constantine-Hub`  

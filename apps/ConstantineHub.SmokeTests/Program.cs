@@ -37,6 +37,7 @@ internal static class Program
             Environment.SetEnvironmentVariable("TUNNEL_CLIENT_PROFILE_FILE", null);
             GodotSettingsStore.Save(new GodotSettings(fixture, "smoke-godot", "tunnel_smoke", 8082,
                 "127.0.0.1", 6262, "127.0.0.1", 6263, null, fixture, false));
+            TestCanonicalKnowledge(fixture);
             Console.WriteLine("Constructing UI");
             using var form = new MainForm { ShowInTaskbar = false };
             UiPass.Apply(form);
@@ -46,6 +47,16 @@ internal static class Program
             Pump();
             Check(Descendants<Label>(form).Any(l => l.Text == "MCP CONNECTIONS"), "semantic connection card present");
             Check(!Descendants<Label>(form).Any(l => l.Text == "Needs attention"), "inactive bridges do not show generic program error");
+            var shortcuts = Descendants<Button>(form).Where(b => b.Text is "Skills" or "Contracts").ToArray();
+            Check(shortcuts.Length == 2 && shortcuts.All(b => b.Visible && b.Tag is null && b.ContextMenuStrip is null),
+                "two visible direct canonical actions with no legacy proxy or menu");
+            var originalSize = form.Size;
+            form.Size = form.MinimumSize;
+            Pump();
+            Check(shortcuts.All(b => b.Right <= b.Parent!.ClientSize.Width && b.Bottom <= b.Parent.ClientSize.Height),
+                "compact canonical buttons fit the minimum window size");
+            form.Size = originalSize;
+            Pump();
 
             var starts = Descendants<Button>(form).Where(b => b.Text == "Start").ToArray();
             var legacy = starts.Where(b => b.Tag is EventHandler).ToArray();
@@ -68,6 +79,13 @@ internal static class Program
                 Check(calls == 2, "expanded Start dispatches once");
                 toggle.PerformClick();
                 Pump();
+            }
+            foreach (var action in Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart"))
+            {
+                var calls = 0;
+                action.Tag = new EventHandler((_, _) => calls++);
+                MainForm.InvokeButtonAction(action);
+                Check(calls == 1, action.Text + " still dispatches once");
             }
 
             var settings = Descendants<Button>(form).Single(b => b.Text == "Settings" && b.ContextMenuStrip is not null);
@@ -109,6 +127,75 @@ internal static class Program
             Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    private static void TestCanonicalKnowledge(string fixture)
+    {
+        var root = Path.Combine(fixture, "canonical sources");
+        Directory.CreateDirectory(Path.Combine(root, "skills"));
+        Directory.CreateDirectory(Path.Combine(root, "docs"));
+        Directory.CreateDirectory(Path.Combine(root, ".tooling"));
+        File.WriteAllText(Path.Combine(root, "manifest.json"), "{}");
+        File.WriteAllText(Path.Combine(root, "docs", "contracts.md"), "Contracts test fixture");
+        File.WriteAllText(Path.Combine(root, "docs", "foundation.md"), "Foundation test fixture");
+        File.WriteAllText(Path.Combine(root, ".tooling", "contracts.json"), "{}");
+        var blenderProject = Path.Combine(fixture, "blender fixture");
+        Directory.CreateDirectory(Path.Combine(blenderProject, "mcp-server"));
+        Directory.CreateDirectory(Path.Combine(blenderProject, ".tooling"));
+        File.WriteAllText(Path.Combine(blenderProject, ".tooling", "config.json"), "{\"tools_root\":\"../canonical sources\"}");
+        var wrapper = Path.Combine(blenderProject, "mcp-server", "run.cmd");
+        File.WriteAllText(wrapper, "@echo off");
+        File.WriteAllText(Path.Combine(fixture, "canonical-blender.yaml"),
+            $"tunnel_id: tunnel_fixture\ncommand: {wrapper}\nlisten_addr: 127.0.0.1:8081\n");
+        var settings = GodotSettingsStore.Load() with { ToolsCRoot = root };
+        var originalConfig = File.ReadAllText(GodotSettingsStore.ConfigPath);
+        try
+        {
+            var document = System.Text.Json.Nodes.JsonNode.Parse(originalConfig)!;
+            document["project_root"] = Path.Combine(fixture, "removed Godot project");
+            document["tools_c_root"] = root;
+            File.WriteAllText(GodotSettingsStore.ConfigPath, document.ToJsonString());
+            Check(GodotSettingsStore.LoadToolsCRoot() == root,
+                "canonical navigation reads the same config independently of a missing Godot project");
+        }
+        finally { File.WriteAllText(GodotSettingsStore.ConfigPath, originalConfig); }
+        var previousOverride = Environment.GetEnvironmentVariable("TOOLS_C_ROOT");
+        Environment.SetEnvironmentVariable("TOOLS_C_ROOT", null);
+        try
+        {
+            Check(CanonicalKnowledge.ResolveFolder(true, "canonical-blender", settings.ToolsCRoot) == Path.Combine(root, "skills"),
+                "Skills resolves configured canonical directory including relative paths and spaces");
+            Check(CanonicalKnowledge.ResolveFolder(false, "canonical-blender", settings.ToolsCRoot) == root,
+                "Contracts opens common canonical root for docs and declarative source");
+            ExpectCanonicalFailure(() => CanonicalKnowledge.ResolveFolder(true, "canonical-blender",
+                Path.Combine(root, "missing")));
+            Directory.Move(Path.Combine(root, "skills"), Path.Combine(root, "skills-missing"));
+            ExpectCanonicalFailure(() => CanonicalKnowledge.ResolveFolder(true, "canonical-blender", settings.ToolsCRoot));
+            Directory.Move(Path.Combine(root, "skills-missing"), Path.Combine(root, "skills"));
+            File.Move(Path.Combine(root, ".tooling", "contracts.json"), Path.Combine(root, ".tooling", "missing.json"));
+            ExpectCanonicalFailure(() => CanonicalKnowledge.ResolveFolder(false, "canonical-blender", settings.ToolsCRoot));
+            File.Move(Path.Combine(root, ".tooling", "missing.json"), Path.Combine(root, ".tooling", "contracts.json"));
+            var alternate = Path.Combine(fixture, "alternate Tools_C");
+            Directory.CreateDirectory(alternate);
+            Directory.CreateDirectory(Path.Combine(alternate, "skills"));
+            File.WriteAllText(Path.Combine(alternate, "manifest.json"), "{}");
+            Environment.SetEnvironmentVariable("TOOLS_C_ROOT", alternate);
+            ExpectCanonicalFailure(() => CanonicalKnowledge.ResolveFolder(true, "canonical-blender", settings.ToolsCRoot));
+            Check(CanonicalKnowledge.ResolveFolder(true, "canonical-blender", alternate) ==
+                Path.Combine(alternate, "skills"), "same Blender environment override and Godot configuration resolve relocated root");
+        }
+        finally { Environment.SetEnvironmentVariable("TOOLS_C_ROOT", previousOverride); }
+    }
+
+    private static void ExpectCanonicalFailure(Action action)
+    {
+        try { action(); }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            Console.WriteLine("PASS: unavailable or conflicting canonical source fails explicitly: " + ex.Message);
+            return;
+        }
+        throw new InvalidOperationException("Expected canonical resolution failure.");
     }
 
     private static void TestConnections()

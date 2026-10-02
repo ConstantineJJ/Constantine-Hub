@@ -38,6 +38,11 @@ internal static class BlenderSkillVerifier
 
         var source = Path.Combine(repositoryDirectory, "skills");
         var target = Path.Combine(serverDirectory, "skills");
+        try { _ = CanonicalKnowledge.BlenderRoot(profile); }
+        catch (Exception ex)
+        {
+            return new(false, 0, 0, source, target, "Cannot resolve canonical Tools_C: " + ex.Message);
+        }
         if (!Directory.Exists(source))
             return new(false, 0, 0, source, target, "Blender source skills directory does not exist.");
         if (!Directory.Exists(target))

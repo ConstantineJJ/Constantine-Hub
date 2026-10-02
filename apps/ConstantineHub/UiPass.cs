@@ -363,9 +363,9 @@ internal static class UiPass
             RowCount = 1,
             Margin = Padding.Empty
         };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 32));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Scale(form, 180)));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Scale(form, 278)));
 
         var left = new TableLayoutPanel
         {
@@ -399,9 +399,27 @@ internal static class UiPass
 
         Button settingsButton = null!;
         settingsButton = MakeActionButton(form, "Settings", primary: false, () => openSettings(settingsButton));
-        settingsButton.Dock = DockStyle.Right;
-        settingsButton.Margin = new Padding(Scale(form, 12), Scale(form, 4), 0, Scale(form, 4));
-        layout.Controls.Add(settingsButton, 2, 0);
+        var actions = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false, Margin = Padding.Empty,
+            Padding = new Padding(Scale(form, 10), Scale(form, 4), 0, 0)
+        };
+        foreach (var button in new[]
+        {
+            MakeActionButton(form, "Skills", primary: false, () => form.OpenCanonicalFolder(skills: true)),
+            MakeActionButton(form, "Contracts", primary: false, () => form.OpenCanonicalFolder(skills: false)),
+            settingsButton
+        })
+        {
+            button.AutoSize = false;
+            button.MinimumSize = Size.Empty;
+            button.Width = Scale(form, button.Text == "Skills" ? 70 : 90);
+            button.Height = Scale(form, 40);
+            button.Margin = new Padding(0, 0, Scale(form, 4), 0);
+            actions.Controls.Add(button);
+        }
+        layout.Controls.Add(actions, 2, 0);
 
         panel.Controls.Add(layout);
         return panel;

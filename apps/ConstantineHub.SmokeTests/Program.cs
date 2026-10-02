@@ -4,6 +4,8 @@ using ConstantineHub.Adapters.Godot;
 using ConstantineHub.Core;
 using Tomlyn;
 using Tomlyn.Model;
+using HubUpdater = ConstantineHub.Updater.Program;
+using ConstantineHub.Updater;
 
 namespace ConstantineHub.SmokeTests;
 
@@ -26,6 +28,7 @@ internal static class Program
                 Environment.Exit(1);
             }, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan);
             TestConnections();
+            TestUpdater();
             TestPluginInstaller(args.Length == 2 && args[0] == "--plugin-client" ? args[1] : null);
             // A hosted CI runner has no workstation Godot project/configuration.
             var fixture = Path.Combine(AppContext.BaseDirectory, "smoke-fixture");
@@ -127,6 +130,63 @@ internal static class Program
             Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    private static void TestUpdater()
+    {
+        var fixture = Path.Combine(Path.GetTempPath(), "hub-updater-test-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(fixture, "source");
+        var target = Path.Combine(fixture, "target");
+        var backup = Path.Combine(fixture, "backup");
+        var log = Path.Combine(fixture, "updater.log");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(target);
+        var replaced = new List<string>();
+        var created = new List<string>();
+        var shortWait = TimeSpan.FromMilliseconds(150);
+        try
+        {
+            foreach (var name in new[] { "a.deps.json", "z.dll" })
+            {
+                File.WriteAllText(Path.Combine(source, name), "new " + name);
+                File.WriteAllText(Path.Combine(target, name), "old " + name);
+            }
+            File.WriteAllText(Path.Combine(source, "new.txt"), "new file");
+            var lockedPath = Path.Combine(target, "z.dll");
+            using (var locked = new FileStream(lockedPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                try { HubUpdater.ApplyFiles(source, target, backup, replaced, created, shortWait); throw new Exception("Locked update unexpectedly succeeded."); }
+                catch (IOException ex) { Check(ex.Message.Contains(lockedPath), "lock error identifies the installation file"); }
+                Check(replaced.Count == 0 && created.Count == 0 && !File.Exists(Path.Combine(target, "new.txt")),
+                    "locked preflight changes no installation files or rollback journal");
+                Check(File.ReadAllText(Path.Combine(target, "a.deps.json")) == "old a.deps.json", "earlier dependency file remains unchanged");
+                try { UpdateFiles.Replace(Path.Combine(source, "z.dll"), lockedPath, Path.Combine(backup, "z.dll"), shortWait); throw new Exception("Locked replacement unexpectedly succeeded."); }
+                catch (IOException) { }
+                Check(File.ReadAllText(lockedPath) == "old z.dll", "failed atomic replacement does not truncate the original");
+                Check(!Directory.GetFiles(target, "*.tmp").Any(), "failed replacement removes its temporary file");
+            }
+            var transient = new FileStream(lockedPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var release = Task.Run(async () => { await Task.Delay(250); transient.Dispose(); });
+            try { HubUpdater.ApplyFiles(source, target, backup, replaced, created, TimeSpan.FromSeconds(3)); }
+            finally { transient.Dispose(); release.GetAwaiter().GetResult(); }
+            Check(replaced.Count == 2 && created.SequenceEqual(new[] { "new.txt" }), "successful replacements alone are journaled");
+            Check(File.ReadAllText(lockedPath) == "new z.dll" && File.ReadAllText(Path.Combine(backup, "z.dll")) == "old z.dll",
+                "transient lock is retried and original bytes backed up");
+            using (var locked = new FileStream(lockedPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                Check(!HubUpdater.RestoreBackup(target, backup, replaced, created, log, shortWait), "partial rollback reports failure");
+                Check(File.ReadAllText(Path.Combine(target, "a.deps.json")) == "old a.deps.json" && !File.Exists(Path.Combine(target, "new.txt")),
+                    "rollback continues restoring other files after a locked file");
+                Check(File.ReadAllText(log).Contains("z.dll") && File.ReadAllText(log).Contains(backup), "partial rollback logs failed file and retained backup");
+            }
+            Check(HubUpdater.RestoreBackup(target, backup, replaced, created, log, shortWait) && File.ReadAllText(lockedPath) == "old z.dll",
+                "rollback completes after lock release");
+            var notice = HubUpdater.FailureNotice("0.2.6", "0.2.8", "File is still in use: " + lockedPath, false, false, log);
+            Check(notice.Contains(lockedPath) && notice.Contains(log) && notice.Contains("files were not changed"), "failure notice explains reason and unchanged installation");
+            Check(HubUpdater.FailureNotice("a", "b", "failure", false, true, log).Contains("Rollback is incomplete"), "incomplete rollback is never claimed as successful");
+            Console.WriteLine("PASS: updater locks, atomic replacement, rollback continuation and failure notice");
+        }
+        finally { Directory.Delete(fixture, recursive: true); }
     }
 
     private static void TestCanonicalKnowledge(string fixture)

@@ -5,6 +5,7 @@ namespace ConstantineHub.Updater;
 internal static class Program
 {
     private const int StartupTimeoutSeconds = 20;
+    private static readonly TimeSpan FileWaitTimeout = TimeSpan.FromSeconds(15);
 
     [STAThread]
     private static int Main(string[] args)
@@ -43,27 +44,7 @@ internal static class Program
             var created = new List<string>();
             try
             {
-                foreach (var sourceFile in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
-                {
-                    var relative = Path.GetRelativePath(source, sourceFile);
-                    var targetFile = Path.GetFullPath(Path.Combine(target, relative));
-                    EnsureInside(target, targetFile);
-                    Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
-
-                    if (File.Exists(targetFile))
-                    {
-                        var backupFile = Path.Combine(backupRoot, relative);
-                        Directory.CreateDirectory(Path.GetDirectoryName(backupFile)!);
-                        File.Copy(targetFile, backupFile, overwrite: true);
-                        replaced.Add(relative);
-                    }
-                    else
-                    {
-                        created.Add(relative);
-                    }
-
-                    File.Copy(sourceFile, targetFile, overwrite: true);
-                }
+                ApplyFiles(source, target, backupRoot, replaced, created, FileWaitTimeout);
 
                 var restartPath = Path.Combine(target, restartName);
                 if (!File.Exists(restartPath))
@@ -97,19 +78,25 @@ internal static class Program
                 try
                 {
                     if (!newHub.HasExited)
+                    {
                         newHub.Kill(entireProcessTree: true);
+                        newHub.WaitForExit(5000);
+                    }
                 }
                 catch { }
 
-                RestoreBackup(target, backupRoot, replaced, created, logPath);
-                RestartRollback(target, restartName, fromVersion, toVersion, logPath);
+                var restored = RestoreBackup(target, backupRoot, replaced, created, logPath);
+                RestartRollback(target, restartName, fromVersion, toVersion, logPath,
+                    "Updated Hub did not report successful startup within 20 seconds.", restored,
+                    replaced.Count + created.Count > 0);
                 return 2;
             }
             catch (Exception ex)
             {
                 Log(logPath, "Update failed: " + ex);
-                RestoreBackup(target, backupRoot, replaced, created, logPath);
-                RestartRollback(target, restartName, fromVersion, toVersion, logPath);
+                var restored = RestoreBackup(target, backupRoot, replaced, created, logPath);
+                RestartRollback(target, restartName, fromVersion, toVersion, logPath,
+                    ex.Message, restored, replaced.Count + created.Count > 0);
                 return 1;
             }
         }
@@ -153,35 +140,56 @@ internal static class Program
         return false;
     }
 
-    private static void RestoreBackup(string target, string backupRoot, IEnumerable<string> replaced, IEnumerable<string> created, string logPath)
+    internal static void ApplyFiles(string source, string target, string backupRoot, IList<string> replaced,
+        IList<string> created, TimeSpan timeout)
     {
-        try
+        var files = Directory.GetFiles(source, "*", SearchOption.AllDirectories)
+            .Select(file => (Source: file, Relative: Path.GetRelativePath(source, file)))
+            .Select(file => (file.Source, file.Relative, Target: Path.GetFullPath(Path.Combine(target, file.Relative))))
+            .OrderBy(file => file.Relative, StringComparer.OrdinalIgnoreCase).ToArray();
+        foreach (var file in files) EnsureInside(target, file.Target);
+        // Check the entire payload before changing even the first installation file.
+        UpdateFiles.WaitUntilWritable(files.Select(file => file.Target), timeout);
+        foreach (var file in files)
         {
-            foreach (var relative in created.Reverse())
-            {
-                var path = Path.Combine(target, relative);
-                if (File.Exists(path))
-                    File.Delete(path);
-            }
-
-            foreach (var relative in replaced.Reverse())
-            {
-                var backupFile = Path.Combine(backupRoot, relative);
-                var targetFile = Path.Combine(target, relative);
-                if (!File.Exists(backupFile))
-                    continue;
-                Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
-                File.Copy(backupFile, targetFile, overwrite: true);
-            }
-            Log(logPath, "Rollback restored the previous installation files.");
-        }
-        catch (Exception ex)
-        {
-            Log(logPath, "Rollback encountered an error: " + ex);
+            var existed = File.Exists(file.Target);
+            UpdateFiles.Replace(file.Source, file.Target, existed ? Path.Combine(backupRoot, file.Relative) : null, timeout);
+            // Only successfully replaced files belong in the rollback journal.
+            (existed ? replaced : created).Add(file.Relative);
         }
     }
 
-    private static void RestartRollback(string target, string restartName, string fromVersion, string toVersion, string logPath)
+    internal static bool RestoreBackup(string target, string backupRoot, IEnumerable<string> replaced,
+        IEnumerable<string> created, string logPath, TimeSpan? timeout = null)
+    {
+        var restored = true;
+        foreach (var relative in created.Reverse())
+        {
+            try
+            {
+                var path = Path.Combine(target, relative);
+                if (File.Exists(path))
+                    UpdateFiles.Retry(() => File.Delete(path), path, timeout ?? FileWaitTimeout);
+            }
+            catch (Exception ex) { restored = false; Log(logPath, $"Rollback failed for {relative}: {ex}"); }
+        }
+        foreach (var relative in replaced.Reverse())
+        {
+            try
+            {
+                var backupFile = Path.Combine(backupRoot, relative);
+                var targetFile = Path.Combine(target, relative);
+                UpdateFiles.Replace(backupFile, targetFile, null, timeout ?? FileWaitTimeout);
+            }
+            catch (Exception ex) { restored = false; Log(logPath, $"Rollback failed for {relative}: {ex}"); }
+        }
+        Log(logPath, restored ? "Rollback restored the previous installation files."
+            : "Rollback incomplete. Backups preserved at: " + backupRoot);
+        return restored;
+    }
+
+    private static void RestartRollback(string target, string restartName, string fromVersion, string toVersion,
+        string logPath, string reason, bool restored, bool changed)
     {
         try
         {
@@ -195,7 +203,7 @@ internal static class Program
                 UseShellExecute = true
             };
             startInfo.ArgumentList.Add("--rollback-notice");
-            startInfo.ArgumentList.Add($"Update {fromVersion} -> {toVersion} failed and was rolled back.");
+            startInfo.ArgumentList.Add(FailureNotice(fromVersion, toVersion, reason, restored, changed, logPath));
             Process.Start(startInfo);
         }
         catch (Exception ex)
@@ -203,6 +211,13 @@ internal static class Program
             Log(logPath, "Could not restart rolled-back Hub: " + ex);
         }
     }
+
+    internal static string FailureNotice(string fromVersion, string toVersion, string reason,
+        bool restored, bool changed, string logPath)
+        => $"Update {fromVersion} -> {toVersion} was not installed.\n\nReason: {reason}\n\n" +
+            (!changed ? "Installation files were not changed." : restored
+                ? "Previous installation files were restored." : "Rollback is incomplete. Backups were preserved.") +
+            $"\n\nDetails: {logPath}";
 
     private static Dictionary<string, string> ParseArgs(string[] args)
     {

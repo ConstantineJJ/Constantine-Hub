@@ -6,8 +6,11 @@
     <Nullable>enable</Nullable>
     <AssemblyName>ConstantineHub.Updater</AssemblyName>
     <RootNamespace>ConstantineHub.Updater</RootNamespace>
-    <Version>0.2.4</Version>
-    <AssemblyVersion>0.2.4.0</AssemblyVersion>
-    <FileVersion>0.2.4.0</FileVersion>
+    <Version>0.2.8</Version>
+    <AssemblyVersion>0.2.8.0</AssemblyVersion>
+    <FileVersion>0.2.8.0</FileVersion>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="ConstantineHub.SmokeTests" />
+  </ItemGroup>
 </Project>

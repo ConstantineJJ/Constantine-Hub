@@ -60,7 +60,7 @@ internal static class Program
                 MessageBox.Show(
                     form,
                     rollback,
-                    "Update rolled back",
+                    "Update not installed",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
             }

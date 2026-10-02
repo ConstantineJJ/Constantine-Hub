@@ -1,14 +1,19 @@
 using ConstantineHub;
 using System.Diagnostics;
 using ConstantineHub.Adapters.Godot;
+using ConstantineHub.Core;
+using Tomlyn;
+using Tomlyn.Model;
 
 namespace ConstantineHub.SmokeTests;
 
 internal static class Program
 {
     [STAThread]
-    private static int Main()
+    private static int Main(string[] args)
     {
+        if (args is ["codex", "plugin", "export", "--dir", var exportDirectory])
+            return ExportFixture(exportDirectory);
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
@@ -20,6 +25,8 @@ internal static class Program
                 Console.Error.WriteLine("FAIL: UI regression timed out after 60 seconds.");
                 Environment.Exit(1);
             }, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan);
+            TestConnections();
+            TestPluginInstaller(args.Length == 2 && args[0] == "--plugin-client" ? args[1] : null);
             // A hosted CI runner has no workstation Godot project/configuration.
             var fixture = Path.Combine(AppContext.BaseDirectory, "smoke-fixture");
             Directory.CreateDirectory(fixture);
@@ -37,6 +44,8 @@ internal static class Program
             Console.WriteLine("Showing UI");
             form.Show();
             Pump();
+            Check(Descendants<Label>(form).Any(l => l.Text == "MCP CONNECTIONS"), "semantic connection card present");
+            Check(!Descendants<Label>(form).Any(l => l.Text == "Needs attention"), "inactive bridges do not show generic program error");
 
             var starts = Descendants<Button>(form).Where(b => b.Text == "Start").ToArray();
             var legacy = starts.Where(b => b.Tag is EventHandler).ToArray();
@@ -100,6 +109,100 @@ internal static class Program
             Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    private static void TestConnections()
+    {
+        ServiceConnection[] services = [new("Local Files", AdapterState.External),
+            new("Blender", AdapterState.Stopped, false), new("Godot editor", AdapterState.Stopped, false)];
+        var overview = ConnectionOverview.Build(services);
+        Check(overview.Title == "Bridges offline" && overview.Tone == ConnectionTone.Pending &&
+            overview.Detail.Contains("Blender") && overview.Detail.Contains("Godot editor"),
+            "ready Local Files with inactive engine bridges is informational and names both bridges");
+        var allStopped = services.Select(s => s with { Tunnel = AdapterState.Stopped }).ToArray();
+        Check(ConnectionOverview.Build(allStopped).Title == "Tunnels stopped", "intentionally stopped tunnels are not errors");
+        Check(ConnectionOverview.Build(services.Select(s => s with { Tunnel = AdapterState.Running, BridgeConnected = true }).ToArray())
+            .Tone == ConnectionTone.Ready, "connected bridges and tunnels are ready");
+        Check(ConnectionOverview.Build([new("Local Files", AdapterState.Degraded)]).Tone == ConnectionTone.Error,
+            "occupied or failed tunnel remains a real error");
+        Check(ConnectionOverview.Build(services, new Dictionary<string, string> { ["Install Tunnel MCP plugin"] = "export failed" })
+            .Detail.Contains("Install Tunnel MCP plugin"), "action failure names the failed operation");
+        Check(ConnectionOverview.Build([new("Godot editor", AdapterState.Stopped, false, "Plugin missing")])
+            .Title == "Setup required", "missing configuration has a separate status");
+    }
+
+    private static void TestPluginInstaller(string? realClient)
+    {
+        var executable = Path.GetFullPath(realClient ?? Environment.ProcessPath!);
+        var home = Path.Combine(AppContext.BaseDirectory, "plugin-fixture-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(home);
+        var config = Path.Combine(home, "config.toml");
+        const string original = "# keep workstation settings\nmodel = \"keep-model\"\n" +
+            "[plugins.\"other@debug\"]\nenabled = false\n" +
+            "[plugins.\"tunnel-mcp@debug\"]\nenabled = false # preserve comment\ncustom = \"keep-option\"\n" +
+            "[plugins.\"tunnel-mcp@debug\".permissions]\nnetwork = false\n";
+        File.WriteAllText(config, original);
+        var target = Path.Combine(home, "plugins", "cache", "debug", "tunnel-mcp", "local");
+        Directory.CreateDirectory(target);
+        File.WriteAllText(Path.Combine(target, "previous.txt"), "old installation");
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            TunnelPluginInstaller.InstallAsync(executable, home).GetAwaiter().GetResult();
+            Check(File.ReadAllText(Path.Combine(target, ".tunnel-client-bin")).Trim() == executable,
+                "Windows installer writes executable hint on attempt " + (attempt + 1));
+            var text = File.ReadAllText(config);
+            var model = Toml.ToModel(text);
+            var plugins = (TomlTable)model["plugins"];
+            var plugin = (TomlTable)plugins["tunnel-mcp@debug"];
+            Check((bool)plugin["enabled"] && (string)plugin["custom"] == "keep-option" &&
+                !(bool)((TomlTable)plugin["permissions"])["network"] &&
+                !(bool)((TomlTable)plugins["other@debug"])["enabled"] &&
+                (string)model["model"] == "keep-model" && text.Contains("keep workstation settings"),
+                "install enables plugin and preserves unrelated settings, plugin options and permissions");
+        }
+        File.WriteAllText(Path.Combine(target, "previous.txt"), "keep installed plugin");
+        var before = File.ReadAllText(config);
+        if (realClient is null)
+        {
+            Environment.SetEnvironmentVariable("HUB_SMOKE_EXPORT_FAILURE", "1");
+            try { ExpectInstallFailure(executable, home); }
+            finally { Environment.SetEnvironmentVariable("HUB_SMOKE_EXPORT_FAILURE", null); }
+            Check(File.ReadAllText(config) == before && File.Exists(Path.Combine(target, "previous.txt")),
+                "unrelated export failure is not suppressed and preserves previous install");
+        }
+        // A blocked settings replacement must roll back the plugin directory too.
+        using (var locked = File.Open(config, FileMode.Open, FileAccess.Read, FileShare.Read))
+            ExpectInstallFailure(executable, home);
+        Check(File.ReadAllText(config) == before && File.Exists(Path.Combine(target, "previous.txt")),
+            "settings write failure restores previous plugin and leaves config untouched");
+        File.WriteAllText(config, "invalid = [");
+        ExpectInstallFailure(executable, home);
+        Check(File.ReadAllText(config) == "invalid = [" && File.Exists(Path.Combine(target, "previous.txt")),
+            "invalid TOML is reported without replacing existing files");
+        Directory.Delete(home, recursive: true);
+    }
+
+    private static void ExpectInstallFailure(string executable, string home)
+    {
+        try { TunnelPluginInstaller.InstallAsync(executable, home).GetAwaiter().GetResult(); }
+        catch { return; }
+        throw new InvalidOperationException("Expected plugin installation failure.");
+    }
+
+    private static int ExportFixture(string directory)
+    {
+        if (Environment.GetEnvironmentVariable("HUB_SMOKE_EXPORT_FAILURE") == "1")
+        {
+            Console.Error.WriteLine("A different export error");
+            return 2;
+        }
+        Directory.CreateDirectory(Path.Combine(directory, ".codex-plugin"));
+        Directory.CreateDirectory(Path.Combine(directory, "mcp"));
+        File.WriteAllText(Path.Combine(directory, ".codex-plugin", "plugin.json"), "{\"name\":\"tunnel-mcp\"}");
+        File.WriteAllText(Path.Combine(directory, ".mcp.json"), "{\"mcpServers\":{\"tunnelMcp\":{}}}");
+        File.WriteAllText(Path.Combine(directory, "mcp", "server.cjs"), "// Export test fixture");
+        Console.Error.WriteLine("tunnel-client binary is not executable: " + Environment.ProcessPath);
+        return 1;
     }
 
     private static bool HasGodotTitle(Control control)

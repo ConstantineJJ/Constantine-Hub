@@ -206,8 +206,6 @@ internal static class UiPass
             foreach (var card in adapterCards)
                 UpdateAdapterSummary(card);
 
-            var localValues = GetStatusValues(localCard);
-            var blenderValues = GetStatusValues(blenderCard);
             var godotValues = GetStatusValues(godotCard);
 
             var projectText = godotValues.Count > 0
@@ -218,41 +216,18 @@ internal static class UiPass
             toolTip.SetToolTip(currentProjectTop, projectText);
             toolTip.SetToolTip(projectRail, projectText);
 
-            var critical = new List<Label>();
-            critical.AddRange(localValues);
-            critical.AddRange(blenderValues);
-            if (godotValues.Count > 0) critical.Add(godotValues[0]);
-            if (godotValues.Count > 1) critical.Add(godotValues[1]);
-            if (godotValues.Count > 2) critical.Add(godotValues[2]);
-            if (godotValues.Count > 4) critical.Add(godotValues[4]);
-            if (godotValues.Count > 5) critical.Add(godotValues[5]);
-
-            var badCount = critical.Count(IsBadState);
-            var warnCount = critical.Count(IsWarnState);
-            if (badCount > 0)
+            var connections = form.Connections;
+            healthRail.Text = connections.Title;
+            healthDetail.Text = connections.Detail;
+            healthRail.ForeColor = connections.Tone switch
             {
-                healthRail.Text = "Needs attention";
-                healthRail.ForeColor = Bad;
-                healthDetail.Text = $"{badCount} core status item{(badCount == 1 ? "" : "s")} failed";
-            }
-            else if (warnCount > 0)
-            {
-                healthRail.Text = "Degraded";
-                healthRail.ForeColor = Warn;
-                healthDetail.Text = $"{warnCount} core status item{(warnCount == 1 ? "" : "s")} pending";
-            }
-            else if (critical.Count > 0 && critical.All(label => label.Text.Contains("Checking", StringComparison.OrdinalIgnoreCase)))
-            {
-                healthRail.Text = "Checking services…";
-                healthRail.ForeColor = TextPrimary;
-                healthDetail.Text = "Waiting for adapter status";
-            }
-            else
-            {
-                healthRail.Text = "Core services healthy";
-                healthRail.ForeColor = Good;
-                healthDetail.Text = "Runtime-idle states remain informational";
-            }
+                ConnectionTone.Error => Bad,
+                ConnectionTone.Pending => Warn,
+                ConnectionTone.Ready => Good,
+                _ => TextSecondary
+            };
+            toolTip.SetToolTip(healthRail, connections.Description);
+            toolTip.SetToolTip(healthDetail, connections.Description);
 
             var updateState = ReadUpdateState(log.Text);
             updateTop.Text = updateState;
@@ -709,7 +684,7 @@ internal static class UiPass
         };
         rail.Controls.Add(flow);
 
-        flow.Controls.Add(BuildRailCard(form, "GLOBAL HEALTH", health, healthDetail));
+        flow.Controls.Add(BuildRailCard(form, "MCP CONNECTIONS", health, healthDetail));
         flow.Controls.Add(BuildRailCard(form, "UPDATE STATUS", update, MakeTextLabel("Stable channel", 8.8F, TextSecondary)));
         flow.Controls.Add(BuildRailCard(form, "CURRENT PROJECT", project, MakeTextLabel("Profile: Local workstation", 8.8F, TextSecondary)));
 

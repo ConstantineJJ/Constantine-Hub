@@ -35,11 +35,7 @@ internal static class GodotSettingsStore
 
     internal static GodotSettings Load()
     {
-        EnsureDefaultExists();
-        var json = File.ReadAllText(ConfigPath, Encoding.UTF8);
-        var dto = JsonSerializer.Deserialize<GodotConfigDto>(json,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-            ?? throw new InvalidDataException("Godot MCP config root is invalid.");
+        var dto = ReadConfig();
 
         var settings = new GodotSettings(
             ProjectRoot: NormalizeProject(dto.project_root ?? string.Empty),
@@ -51,10 +47,25 @@ internal static class GodotSettingsStore
             RuntimeHost: string.IsNullOrWhiteSpace(dto.runtime_host) ? "127.0.0.1" : dto.runtime_host!,
             RuntimePort: dto.runtime_port is > 0 and <= 65535 ? dto.runtime_port.Value : 6263,
             GodotExecutable: string.IsNullOrWhiteSpace(dto.godot_executable) ? null : Path.GetFullPath(Environment.ExpandEnvironmentVariables(dto.godot_executable!)),
-            ToolsCRoot: NormalizeDirectory(dto.tools_c_root ?? @"E:\MyCreations\Tools_C", mustExist: false),
+            ToolsCRoot: ReadToolsCRoot(dto),
             AutoLaunchGodot: dto.auto_launch_godot ?? true);
         Validate(settings);
         return settings;
+    }
+
+    // Knowledge navigation must not depend on a disposable Godot project being present.
+    internal static string LoadToolsCRoot() => ReadToolsCRoot(ReadConfig());
+
+    private static string ReadToolsCRoot(GodotConfigDto dto)
+        => NormalizeDirectory(dto.tools_c_root ?? @"E:\MyCreations\Tools_C", mustExist: false);
+
+    private static GodotConfigDto ReadConfig()
+    {
+        EnsureDefaultExists();
+        var json = File.ReadAllText(ConfigPath, Encoding.UTF8);
+        return JsonSerializer.Deserialize<GodotConfigDto>(json,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+            ?? throw new InvalidDataException("Godot MCP config root is invalid.");
     }
 
     internal static void Save(GodotSettings settings)

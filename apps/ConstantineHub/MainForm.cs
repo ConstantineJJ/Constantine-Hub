@@ -518,6 +518,24 @@ internal sealed class MainForm : Form
     private static string ActionKey(string title, Func<CancellationToken, Task> action)
         => action.Target is IHubAdapter adapter ? adapter.DisplayName : title;
 
+    internal void OpenCanonicalFolder(bool skills)
+    {
+        var name = skills ? "skills directory" : "contracts source";
+        try
+        {
+            var folder = CanonicalKnowledge.ResolveFolder(skills, _blender.Settings.TunnelProfile,
+                GodotSettingsStore.LoadToolsCRoot());
+            CanonicalKnowledge.OpenExplorer(folder);
+            Log($"Opened canonical Tools_C {name}: {folder}");
+        }
+        catch (Exception ex)
+        {
+            Log($"Cannot open canonical Tools_C {name}: {ex}");
+            MessageBox.Show(this, $"Canonical Tools_C {name} not found.\nSee Diagnostics for details.",
+                "Canonical Tools_C", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
     private async Task DoctorLocalFilesAsync()
     {
         try

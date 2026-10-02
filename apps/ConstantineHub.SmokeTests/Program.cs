@@ -9,11 +9,17 @@ internal static class Program
     [STAThread]
     private static int Main()
     {
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         try
         {
+            using var watchdog = new System.Threading.Timer(_ =>
+            {
+                Console.Error.WriteLine("FAIL: UI regression timed out after 60 seconds.");
+                Environment.Exit(1);
+            }, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan);
             // A hosted CI runner has no workstation Godot project/configuration.
             var fixture = Path.Combine(AppContext.BaseDirectory, "smoke-fixture");
             Directory.CreateDirectory(fixture);
@@ -24,9 +30,11 @@ internal static class Program
             Environment.SetEnvironmentVariable("TUNNEL_CLIENT_PROFILE_FILE", null);
             GodotSettingsStore.Save(new GodotSettings(fixture, "smoke-godot", "tunnel_smoke", 8082,
                 "127.0.0.1", 6262, "127.0.0.1", 6263, null, fixture, false));
+            Console.WriteLine("Constructing UI");
             using var form = new MainForm { ShowInTaskbar = false };
             UiPass.Apply(form);
             UiAcceptancePass.Apply(form);
+            Console.WriteLine("Showing UI");
             form.Show();
             Pump();
 

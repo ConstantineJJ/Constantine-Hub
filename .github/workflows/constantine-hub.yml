@@ -42,6 +42,7 @@ jobs:
           dotnet build apps/ConstantineHub.Updater/ConstantineHub.Updater.csproj -c Release --no-restore
 
       - name: UI regression smoke tests
+        timeout-minutes: 2
         run: dotnet run --project apps/ConstantineHub.SmokeTests/ConstantineHub.SmokeTests.csproj -c Release
 
       - name: Publish portable win-x64

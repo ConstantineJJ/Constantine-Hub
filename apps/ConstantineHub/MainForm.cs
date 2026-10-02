@@ -36,6 +36,7 @@ internal sealed class MainForm : Form
     private readonly Label _godotSkills = new();
 
     private bool _refreshing;
+    private bool _checkingUpdates;
     private bool _trayHintShown;
     private FormWindowState _restoreWindowState = FormWindowState.Normal;
 
@@ -663,6 +664,8 @@ internal sealed class MainForm : Form
 
     private async Task CheckForUpdatesAsync(bool silentWhenCurrent = false)
     {
+        if (_checkingUpdates) return;
+        _checkingUpdates = true;
         try
         {
             var current = typeof(MainForm).Assembly.GetName().Version ?? new Version(0, 1, 0);
@@ -697,6 +700,7 @@ internal sealed class MainForm : Form
             Log("Update FAILED: " + ex.Message);
             MessageBox.Show(this, ex.Message, "Update failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+        finally { _checkingUpdates = false; }
     }
 
     private void ToggleVerboseLogs()

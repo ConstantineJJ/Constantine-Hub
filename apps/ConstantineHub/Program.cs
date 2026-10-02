@@ -5,6 +5,24 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => Core.ErrorReporter.Show(e.Exception, "Constantine Hub — unexpected error");
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            Core.ErrorReporter.Show(e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString()),
+                "Constantine Hub — fatal error");
+        try
+        {
+            Run(args);
+        }
+        catch (Exception ex)
+        {
+            Core.ErrorReporter.Show(ex, "Constantine Hub — startup or application error");
+            Environment.ExitCode = 1;
+        }
+    }
+
+    private static void Run(string[] args)
+    {
         ApplicationConfiguration.Initialize();
 
         var options = ParseArgs(args);

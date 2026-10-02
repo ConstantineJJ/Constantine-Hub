@@ -154,6 +154,9 @@ internal static class UiPass
         dashboardFlow.SizeChanged += (_, _) => ResizeDashboardChildren();
         dashboardFlow.ControlAdded += (_, _) => ResizeDashboardChildren();
 
+        var localSettingsButton = FindButton(localCard, "Settings");
+        var settingsMenu = BuildSettingsMenu(form, localSettingsButton,
+            FindButton(globalActions, "Check Updates"), FindButton(globalActions, "Save Log"));
         var navigation = BuildNavigation(
             form,
             onHome: () =>
@@ -167,18 +170,16 @@ internal static class UiPass
                 dashboardFlow.ScrollControlIntoView(logHost);
                 log.Focus();
             },
-            onUpdates: () => FindButton(globalActions, "Check Updates")?.PerformClick(),
-            onSettings: () => FindButton(localCard, "Settings")?.PerformClick());
+            onUpdates: () => MainForm.InvokeButtonAction(FindButton(globalActions, "Check Updates")),
+            onSettings: () => MainForm.InvokeButtonAction(localSettingsButton));
 
         var topBar = BuildTopBar(
             form,
             currentProjectTop,
             updateTop,
-            () => ShowSettingsMenu(
-                form,
-                FindButton(localCard, "Settings"),
-                FindButton(globalActions, "Check Updates"),
-                FindButton(globalActions, "Save Log")));
+            button => settingsMenu.Show(button,
+                new Point(button.Width - settingsMenu.PreferredSize.Width, button.Height)));
+        FindButton(topBar, "Settings")!.ContextMenuStrip = settingsMenu;
 
         RestyleGlobalActions(form, globalActions);
 
@@ -371,7 +372,7 @@ internal static class UiPass
         MainForm form,
         Label currentProject,
         Label updateState,
-        Action openSettings)
+        Action<Control> openSettings)
     {
         var panel = new Panel
         {
@@ -421,7 +422,8 @@ internal static class UiPass
         middle.Controls.Add(updateState, 0, 1);
         layout.Controls.Add(middle, 1, 0);
 
-        var settingsButton = MakeActionButton(form, "Settings", primary: false, openSettings);
+        Button settingsButton = null!;
+        settingsButton = MakeActionButton(form, "Settings", primary: false, () => openSettings(settingsButton));
         settingsButton.Dock = DockStyle.Right;
         settingsButton.Margin = new Padding(Scale(form, 12), Scale(form, 4), 0, Scale(form, 4));
         layout.Controls.Add(settingsButton, 2, 0);
@@ -551,7 +553,8 @@ internal static class UiPass
         summary.Margin = new Padding(Scale(form, 6), 0, Scale(form, 8), 0);
         header.Controls.Add(summary, 2, 0);
 
-        var start = MakeActionButton(form, "Start", primary: true, () => FindButton(originalCard, "Start")?.PerformClick());
+        var start = MakeActionButton(form, "Start", primary: true,
+            () => MainForm.InvokeButtonAction(FindButton(originalCard, "Start")));
         start.Margin = new Padding(Scale(form, 4), Scale(form, 3), Scale(form, 8), Scale(form, 3));
         header.Controls.Add(start, 3, 0);
 
@@ -932,7 +935,7 @@ internal static class UiPass
         return null;
     }
 
-    private static void ShowSettingsMenu(
+    private static ContextMenuStrip BuildSettingsMenu(
         Control owner,
         Button? localSettings,
         Button? update,
@@ -944,11 +947,17 @@ internal static class UiPass
             ForeColor = TextPrimary,
             ShowImageMargin = false
         };
-        menu.Items.Add("Local Files allowlist", null, (_, _) => localSettings?.PerformClick());
-        menu.Items.Add("Check for updates", null, (_, _) => update?.PerformClick());
-        menu.Items.Add("Save diagnostic log", null, (_, _) => saveLog?.PerformClick());
-        menu.Closed += (_, _) => menu.Dispose();
-        menu.Show(owner, new Point(Math.Max(0, owner.Width - menu.PreferredSize.Width), owner.Height));
+        void InvokeAfterClose(Button? button)
+        {
+            if (!owner.IsDisposed && owner.IsHandleCreated)
+                owner.BeginInvoke(new Action(() => MainForm.InvokeButtonAction(button)));
+        }
+        menu.Items.Add("Local Files allowlist", null, (_, _) => InvokeAfterClose(localSettings));
+        menu.Items.Add("Check for updates", null, (_, _) => InvokeAfterClose(update));
+        menu.Items.Add("Save diagnostic log", null, (_, _) => InvokeAfterClose(saveLog));
+        // WinForms still accesses the dropdown after Closed; keep it alive with its owner.
+        owner.Disposed += (_, _) => menu.Dispose();
+        return menu;
     }
 
     private static Button MakeNavButton(MainForm form, string text, bool active, Action click)

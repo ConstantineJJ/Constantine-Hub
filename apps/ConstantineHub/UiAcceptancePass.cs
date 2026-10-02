@@ -165,7 +165,8 @@ internal static class UiAcceptancePass
             }
         }
 
-        var body = inner.GetControlFromPosition(0, 1) as Panel;
+        // GetControlFromPosition skips the explicitly hidden collapsed body.
+        var body = inner.Controls.OfType<Panel>().FirstOrDefault(panel => inner.GetRow(panel) == 1);
         if (body is null || body.Controls.Count == 0)
             return;
 
@@ -182,7 +183,7 @@ internal static class UiAcceptancePass
             legacyLayout.RowStyles[2].SizeType = SizeType.Absolute;
             legacyLayout.RowStyles[2].Height = Scale(form, 54);
 
-            foreach (var button in actions.Controls.OfType<Button>().Where(button => button.Visible))
+            foreach (var button in actions.Controls.OfType<Button>())
             {
                 button.MinimumSize = new Size(Scale(form, 94), Scale(form, 38));
                 button.Height = Scale(form, 38);
@@ -214,6 +215,12 @@ internal static class UiAcceptancePass
                 {
                     form.PerformLayout();
                     originalCard.PerformLayout();
+                    if (actions is not null)
+                    {
+                        legacyLayout.RowStyles[2].Height = Math.Max(Scale(form, 54),
+                            actions.GetPreferredSize(new Size(actions.ClientSize.Width, 0)).Height + actions.Margin.Vertical);
+                        legacyLayout.PerformLayout();
+                    }
                     actions?.PerformLayout();
 
                     var visibleButtons = actions?.Controls

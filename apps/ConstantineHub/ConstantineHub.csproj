@@ -7,10 +7,14 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ConstantineHub</RootNamespace>
     <AssemblyName>ConstantineHub</AssemblyName>
-    <Version>0.2.4</Version>
-    <AssemblyVersion>0.2.4.0</AssemblyVersion>
-    <FileVersion>0.2.4.0</FileVersion>
+    <Version>0.2.5</Version>
+    <AssemblyVersion>0.2.5.0</AssemblyVersion>
+    <FileVersion>0.2.5.0</FileVersion>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ConstantineHub.SmokeTests" />
+  </ItemGroup>
 
   <PropertyGroup Condition="Exists('Assets\CH_Icon.ico')">
     <ApplicationIcon>Assets\CH_Icon.ico</ApplicationIcon>

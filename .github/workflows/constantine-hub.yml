@@ -6,12 +6,14 @@ on:
     paths:
       - 'apps/ConstantineHub/**'
       - 'apps/ConstantineHub.Updater/**'
+      - 'apps/ConstantineHub.SmokeTests/**'
       - 'adapters/godot-mcp/**'
       - '.github/workflows/constantine-hub.yml'
   pull_request:
     paths:
       - 'apps/ConstantineHub/**'
       - 'apps/ConstantineHub.Updater/**'
+      - 'apps/ConstantineHub.SmokeTests/**'
       - 'adapters/godot-mcp/**'
       - '.github/workflows/constantine-hub.yml'
 
@@ -38,6 +40,9 @@ jobs:
         run: |
           dotnet build apps/ConstantineHub/ConstantineHub.csproj -c Release --no-restore
           dotnet build apps/ConstantineHub.Updater/ConstantineHub.Updater.csproj -c Release --no-restore
+
+      - name: UI regression smoke tests
+        run: dotnet run --project apps/ConstantineHub.SmokeTests/ConstantineHub.SmokeTests.csproj -c Release
 
       - name: Publish portable win-x64
         shell: pwsh

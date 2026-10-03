@@ -51,7 +51,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
             TunnelRuntimeState.RunningExpected when _ownedTunnel.IsRunning => new(
                 Id, DisplayName, AdapterState.Running, "Tunnel ready (Hub-owned).", details),
             TunnelRuntimeState.RunningExpected => new(
-                Id, DisplayName, AdapterState.External, "Tunnel ready (external/adopted).", details),
+                Id, DisplayName, AdapterState.External, "Tunnel ready (managed outside Hub).", details),
             TunnelRuntimeState.Occupied => new(
                 Id, DisplayName, AdapterState.Degraded, runtime.Message, details),
             _ => new(Id, DisplayName, AdapterState.Failed, runtime.Message, details)
@@ -140,8 +140,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
         {
             var current = await TunnelRuntimeProbe.ProbeAsync(ProfileName, cancellationToken);
             if (current.State == TunnelRuntimeState.RunningExpected)
-                throw new InvalidOperationException(
-                    "The active tunnel is external/adopted. Hub will not stop it; restart it from its owner.");
+                throw new ExternalTunnelControlException(DisplayName);
         }
 
         await StartAsync(cancellationToken);

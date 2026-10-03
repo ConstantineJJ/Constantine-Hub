@@ -16,6 +16,8 @@ internal static class Program
     {
         if (args is ["codex", "plugin", "export", "--dir", var exportDirectory])
             return ExportFixture(exportDirectory);
+        if (args is ["run", "--profile", var profile])
+            return TunnelLifecycleTests.Serve(profile);
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
@@ -29,6 +31,7 @@ internal static class Program
             }, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan);
             TestConnections();
             TestUpdater();
+            TunnelLifecycleTests.Run();
             TestPluginInstaller(args.Length == 2 && args[0] == "--plugin-client" ? args[1] : null);
             // A hosted CI runner has no workstation Godot project/configuration.
             var fixture = Path.Combine(AppContext.BaseDirectory, "smoke-fixture");
@@ -90,6 +93,27 @@ internal static class Program
                 MainForm.InvokeButtonAction(action);
                 Check(calls == 1, action.Text + " still dispatches once");
             }
+
+            foreach (var id in new[] { "local-files", "blender", "godot" })
+                form.UpdateTunnelActions(id, AdapterState.External);
+            var protectedActions = Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart").ToArray();
+            Check(protectedActions.Length == 6 && protectedActions.All(b => !b.Enabled), "external tunnels disable Stop/Restart in all adapter cards");
+            Check(Descendants<Label>(form).Count(l => l.Tag is string hint && hint == ExternalTunnelControlException.Guidance) == 3,
+                "each external tunnel has launcher/restart guidance");
+            foreach (var action in protectedActions)
+            {
+                action.Tag = new EventHandler((_, _) => throw new Exception("Protected control dispatched."));
+                MainForm.InvokeButtonAction(action);
+            }
+            foreach (var id in new[] { "local-files", "blender", "godot" })
+                form.UpdateTunnelActions(id, AdapterState.Running);
+            Check(protectedActions.All(b => b.Enabled), "Hub-owned tunnel controls re-enable after ownership changes");
+            form.RunAdapterActionQuietAsync("Restart Blender MCP", _ => Task.FromException(new ExternalTunnelControlException("Blender MCP"))).GetAwaiter().GetResult();
+            Check(form.Connections.Title != "Service error", "expected external-control restriction does not become global service error");
+            form.RunAdapterActionQuietAsync("Restart Blender MCP", _ => Task.FromException(new IOException("Test actual failure"))).GetAwaiter().GetResult();
+            Check(form.Connections.Title == "Service error", "actual restart failures still become service errors");
+            form.RunAdapterActionQuietAsync("Restart Blender MCP", _ => Task.FromException(new ExternalTunnelControlException("Blender MCP"))).GetAwaiter().GetResult();
+            Check(form.Connections.Title != "Service error", "expected restriction clears the stale operation failure");
 
             var settings = Descendants<Button>(form).Single(b => b.Text == "Settings" && b.ContextMenuStrip is not null);
             var menu = settings.ContextMenuStrip!;

@@ -19,6 +19,8 @@ internal sealed class MainForm : Form
     private bool _verboseLogs;
     private IReadOnlyList<ServiceConnection> _connections = [];
     private readonly Dictionary<string, string> _actionErrors = new();
+    private readonly Dictionary<string, (Button Stop, Button Restart, Label Status)> _tunnelActions = new();
+    private readonly ToolTip _tunnelActionTips = new() { ShowAlways = true };
     internal ConnectionOverview Connections => ConnectionOverview.Build(_connections, _actionErrors);
 
     private readonly Label _localTunnel = new();
@@ -87,6 +89,7 @@ internal sealed class MainForm : Form
             _statusTimer.Stop();
             _trayIcon.Visible = false;
             _trayIcon.Dispose();
+            _tunnelActionTips.Dispose();
             _localFiles.Dispose();
             _blender.Dispose();
             _godot.Dispose();
@@ -178,8 +181,7 @@ internal sealed class MainForm : Form
         AddStatusRow(content, 2, "Access", _localAccess);
 
         actions.Controls.Add(MakeButton("Start", async (_, _) => await RunAdapterActionAsync("Start Local Files", _localFiles.StartAsync), primary: true));
-        actions.Controls.Add(MakeButton("Stop", async (_, _) => await RunAdapterActionAsync("Stop Local Files", _localFiles.StopAsync)));
-        actions.Controls.Add(MakeButton("Restart", async (_, _) => await RunAdapterActionAsync("Restart Local Files", _localFiles.RestartAsync)));
+        AddTunnelActions(actions, _localFiles, _localTunnel, "Local Files");
         actions.Controls.Add(MakeButton("Doctor", async (_, _) => await DoctorLocalFilesAsync()));
         actions.Controls.Add(MakeButton("Install Plugin", async (_, _) => await InstallTunnelPluginAsync()));
         actions.Controls.Add(MakeButton("Settings", async (_, _) => await OpenLocalFilesSettingsAsync()));
@@ -195,8 +197,7 @@ internal sealed class MainForm : Form
         AddStatusRow(content, 3, "Skills", _blenderSkills);
 
         actions.Controls.Add(MakeButton("Start", async (_, _) => await RunAdapterActionAsync("Start Blender MCP", _blender.StartAsync), primary: true));
-        actions.Controls.Add(MakeButton("Stop", async (_, _) => await RunAdapterActionAsync("Stop Blender MCP", _blender.StopAsync)));
-        actions.Controls.Add(MakeButton("Restart", async (_, _) => await RunAdapterActionAsync("Restart Blender MCP", _blender.RestartAsync)));
+        AddTunnelActions(actions, _blender, _blenderTunnel, "Blender MCP");
         actions.Controls.Add(MakeButton("Doctor", async (_, _) => await DoctorBlenderAsync()));
         return card;
     }
@@ -212,11 +213,28 @@ internal sealed class MainForm : Form
         AddStatusRow(content, 5, "Skills/contracts", _godotSkills);
 
         actions.Controls.Add(MakeButton("Start", async (_, _) => await RunAdapterActionAsync("Start Godot MCP", _godot.StartAsync), primary: true));
-        actions.Controls.Add(MakeButton("Stop", async (_, _) => await RunAdapterActionAsync("Stop Godot MCP", _godot.StopAsync)));
-        actions.Controls.Add(MakeButton("Restart", async (_, _) => await RunAdapterActionAsync("Restart Godot MCP", _godot.RestartAsync)));
+        AddTunnelActions(actions, _godot, _godotTunnel, "Godot MCP");
         actions.Controls.Add(MakeButton("Install Plugin", (_, _) => InstallGodotPlugin()));
         actions.Controls.Add(MakeButton("Doctor", async (_, _) => await DoctorGodotAsync()));
         return card;
+    }
+
+    private void AddTunnelActions(FlowLayoutPanel actions, IHubAdapter adapter, Label status, string name)
+    {
+        var stop = MakeButton("Stop", async (_, _) => await RunAdapterActionAsync("Stop " + name, adapter.StopAsync));
+        var restart = MakeButton("Restart", async (_, _) => await RunAdapterActionAsync("Restart " + name, adapter.RestartAsync));
+        actions.Controls.Add(stop);
+        actions.Controls.Add(restart);
+        _tunnelActions.Add(adapter.Id, (stop, restart, status));
+    }
+
+    internal void UpdateTunnelActions(string id, AdapterState state)
+    {
+        var controls = _tunnelActions[id];
+        var external = state == AdapterState.External;
+        controls.Stop.Enabled = controls.Restart.Enabled = !external;
+        controls.Status.Tag = external ? ExternalTunnelControlException.Guidance : null;
+        _tunnelActionTips.SetToolTip(controls.Status, external ? ExternalTunnelControlException.Guidance : null);
     }
 
     private Panel BuildCard(
@@ -401,6 +419,7 @@ internal sealed class MainForm : Form
         {
             var local = await _localFiles.GetStatusAsync();
             SetState(_localTunnel, local.State, local.Summary);
+            UpdateTunnelActions(_localFiles.Id, local.State);
 
             var summary = _localFiles.SettingsSummary;
             SetStatus(_localRoots, summary.ConfigValid, summary.ConfigValid
@@ -419,6 +438,7 @@ internal sealed class MainForm : Form
                     ? $"Connected {blender.BridgeEndpoint}"
                     : $"Not listening on {blender.BridgeEndpoint}");
             SetState(_blenderTunnel, blender.TunnelStatus.State, blender.TunnelStatus.Summary);
+            UpdateTunnelActions(_blender.Id, blender.TunnelStatus.State);
             SetStatus(_blenderSkills, blender.Skills.Success,
                 blender.Skills.Success
                     ? $"{blender.Skills.VerifiedCount}/{blender.Skills.SourceCount} verified"
@@ -436,6 +456,7 @@ internal sealed class MainForm : Form
                     ? $"Connected {_godot.Settings.RuntimeHost}:{_godot.Settings.RuntimePort}"
                     : "Idle / runtime not running");
             SetState(_godotTunnel, godot.TunnelStatus.State, godot.TunnelStatus.Summary);
+            UpdateTunnelActions(_godot.Id, godot.TunnelStatus.State);
             SetStatus(_godotSkills, godot.SkillsOk, godot.SkillsSummary);
             _connections = [
                 new("Local Files", local.State, SetupIssue: summary.ConfigValid ? null : summary.Message),
@@ -477,7 +498,7 @@ internal sealed class MainForm : Form
         await RefreshStatusAsync();
     }
 
-    private async Task RunAdapterActionQuietAsync(
+    internal async Task RunAdapterActionQuietAsync(
         string title,
         Func<CancellationToken, Task> action)
     {
@@ -485,6 +506,11 @@ internal sealed class MainForm : Form
         {
             Log(title + " requested.");
             await action(CancellationToken.None);
+            _actionErrors.Remove(ActionKey(title, action));
+        }
+        catch (ExternalTunnelControlException ex)
+        {
+            Log(title + " unavailable: " + ex.Message);
             _actionErrors.Remove(ActionKey(title, action));
         }
         catch (Exception ex)
@@ -503,6 +529,12 @@ internal sealed class MainForm : Form
             Log(title + " requested.");
             await action(CancellationToken.None);
             _actionErrors.Remove(ActionKey(title, action));
+        }
+        catch (ExternalTunnelControlException ex)
+        {
+            Log(title + " unavailable: " + ex.Message);
+            _actionErrors.Remove(ActionKey(title, action));
+            MessageBox.Show(this, ex.Message, "Tunnel managed outside Hub", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {

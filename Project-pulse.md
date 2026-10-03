@@ -2,12 +2,20 @@
 
 Updated: 2026-10-03 (Europe/Riga). Application version: 0.2.9; updater: 0.2.8.
 
-0.2.9 publication pending CI. Previous release: [stable v0.2.8](https://github.com/ConstantineJJ/Constantine-Hub/releases/tag/v0.2.8),
-code commit `42b9b2e28c09ef0e3ecf63ceb24bfe9ec21f3171` (PR #14).
+Published: [stable v0.2.9](https://github.com/ConstantineJJ/Constantine-Hub/releases/tag/v0.2.9),
+code commit `75d3dbaaf04b3bd45c0e5ed2013e6f406139dafe` (PR #15).
 
 ## Current State
 
 **External tunnel controls: implemented; automated and native portable scoped QA PASS.**
+GitHub PR workflow `37138728675` and main release workflow `37138845045`: PASS.
+Release ZIP SHA-256 matches:
+`f143c7eab39a75f57e080ea47ec70aa18c1a7af035916fba0a2de9799c80c082`.
+Released Hub reports 0.2.9 at the expected merge commit; bundled updater remains
+0.2.8 with the previous lock/rollback fixes. Native QA used local portable publish;
+downloaded release was verified read only. Installed workstation Hub remains 0.2.8
+and can update through Check Updates.
+
 The 2026-10-03 user log confirms Blender Restart targeted an already running
 external tunnel. Protecting that process is intentional; presenting the restriction
 as InvalidOperationException / Service error was the defect. Stop/Restart are now
@@ -62,6 +70,9 @@ guidance, expected restriction versus actual error and stale error clearing.
 Existing Settings, collapsed Start, plugin install, canonical source and updater
 regressions pass. Native portable build with the actual Blender tunnel shows
 "managed outside Hub" and disabled Stop/Restart in the expanded Blender card.
+Native Settings open/close PASS; the Hub remains responsive. External Blender
+tunnel PID 1244 and its parent remain unchanged before/after QA. The test Hub was
+closed; workstation configuration and original dirty checkout files were untouched.
 No live Blender/Godot engine or external tunnel was restarted during QA.
 
 ### Previous pass — updater recovery (0.2.8)
@@ -163,14 +174,14 @@ interruption (power loss). File-lock and per-file rollback regression cases now 
 
 ## Source state and next step
 
-The listed updater/docs changes are committed for GitHub delivery; no uncommitted
+The listed 0.2.9 control/test/docs changes are committed for GitHub delivery; no uncommitted
 task changes remain in the managed fix worktree after the final Pulse commit. The original
 `E:\MyCreations\Constantine-Hub` checkout has unrelated
 modified/untracked docs, source and installed release files; they are preserved and
 excluded from the feature commits. Tools_C was read only and remains the sole
 canonical knowledge source. No deployment/router/cache knowledge was edited.
 
-Next recommended step: publish 0.2.9 after CI and use Check Updates. If Blender's
+Next recommended step: use Check Updates to install published 0.2.9. If Blender's
 tunnel needs a restart, use the app/terminal that started it; to transfer future
 lifecycle control to Hub, stop it there then Start in Hub. Remaining acceptance:
 installed 0.2.8 → 0.2.9 Check Updates; informational race notice visual QA; full

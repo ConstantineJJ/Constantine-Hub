@@ -894,7 +894,7 @@ internal static class UiPass
             : IsWarnState(selected)
                 ? Warn
                 : selected.ForeColor;
-        host.ToolTip.SetToolTip(host.Summary, text);
+        host.ToolTip.SetToolTip(host.Summary, selected.Tag is string guidance ? text + "\n\n" + guidance : text);
     }
 
     private static List<Label> GetStatusValues(Control card)

@@ -1,11 +1,21 @@
 # Constantine Hub — Project Pulse
 
-Updated: 2026-10-02 (Europe/Riga). Application / updater version: 0.2.8.
+Updated: 2026-10-03 (Europe/Riga). Application version: 0.2.9; updater: 0.2.8.
 
-Published: [stable v0.2.8](https://github.com/ConstantineJJ/Constantine-Hub/releases/tag/v0.2.8),
+0.2.9 publication pending CI. Previous release: [stable v0.2.8](https://github.com/ConstantineJJ/Constantine-Hub/releases/tag/v0.2.8),
 code commit `42b9b2e28c09ef0e3ecf63ceb24bfe9ec21f3171` (PR #14).
 
 ## Current State
+
+**External tunnel controls: implemented; automated and native portable scoped QA PASS.**
+The 2026-10-03 user log confirms Blender Restart targeted an already running
+external tunnel. Protecting that process is intentional; presenting the restriction
+as InvalidOperationException / Service error was the defect. Stop/Restart are now
+disabled for external tunnels on all three cards; the tunnel status says "managed
+outside Hub" and its tooltip explains restarting from its launcher or stopping it
+there before Start in Hub. A race before status refresh produces an informational
+notice / Diagnostics entry, without a crash report or global Service error.
+Hub-owned tunnels remain restartable; process ownership protection is unchanged.
 
 **Updater file-lock fix: implemented; scoped QA / CI / installed recovery PASS.**
 User logs show repeated 0.2.6 → 0.2.7 failures on the occupied installation
@@ -32,6 +42,29 @@ path to Diagnostics. No editor, file browser, Git UI, knowledge copy or sync was
   and a detailed Diagnostics entry. Conflicting roots fail explicitly.
 
 ## Changes in this pass
+
+Added a typed expected external-control restriction and separate handling in
+interactive/quiet adapter actions; real failures still use ErrorReporter and Service
+error. Tunnel snapshots update the existing Stop/Restart buttons and guidance;
+collapsed summaries carry the same guidance tooltip. No Dashboard redesign, tunnel
+takeover, process discovery/kill or MCP/Tools_C changes.
+
+Changed modules: `Core/ExternalTunnelControlException.cs`,
+`Core/TunnelProfileAdapterBase.cs`, `MainForm.cs`, `UiPass.cs`, Hub version project,
+smoke-test `Program.cs` / `TunnelLifecycleTests.cs`, this Pulse.
+
+PASS: isolated live process fixture proves external Start adopts only status;
+Stop/Restart leave the process alive; mismatched identity is a real failure and
+also leaves the process alive; Hub-owned Start/Restart/Stop reaches readiness,
+replaces only its own PID and releases its listener. UI checks cover all three
+cards' disabled controls, re-enabling after ownership changes, disabled dispatch,
+guidance, expected restriction versus actual error and stale error clearing.
+Existing Settings, collapsed Start, plugin install, canonical source and updater
+regressions pass. Native portable build with the actual Blender tunnel shows
+"managed outside Hub" and disabled Stop/Restart in the expanded Blender card.
+No live Blender/Godot engine or external tunnel was restarted during QA.
+
+### Previous pass — updater recovery (0.2.8)
 
 Updater preflights every existing payload target before changing any file, waits
 up to 15 seconds for sharing/mapped-file locks, then replaces each file with a
@@ -66,7 +99,7 @@ Changed modules: `Core/CanonicalKnowledge.cs`, `MainForm.cs`, `UiPass.cs`,
 | Tunnel MCP plugin install | Fixed in 0.2.6: Windows execute-bit rejection bypassed only for the exact known export error; staged install, executable hint, preserved TOML options/permissions and rollback tested. Installer regressions pass again in this pass. |
 | Settings | Fixed in 0.2.5: owner-lived menu and queued action after close. Native portable open/close PASS; 15 repeated cycles and allowlist dispatch PASS. New shortcuts use direct handlers. |
 | Start | Fixed in 0.2.5: collapsed-card action dispatch. All three collapsed/expanded Start regressions PASS; user confirms 0.2.6 works. |
-| Stop / Restart | Dispatch regression PASS for all three adapters. Ownership/lifecycle code unchanged; full live engine lifecycle is not certified by these dispatch tests. |
+| Stop / Restart | External controls disabled; expected ownership restriction is informational. Isolated actual-process lifecycle and three-card control regressions PASS in 0.2.9. Full Blender/Godot engine lifecycle remains pending. |
 | Connection status | Fixed in 0.2.6: offline bridges and stopped tunnels are distinct from setup/service failures. Native and automated status checks PASS. |
 | Updater | Repeated 0.2.6 → 0.2.7 file-lock and incomplete rollback confirmed from workstation log. Fixed in published 0.2.8; lock/rollback regressions and portable restart handshake PASS. Actual installation recovered to 0.2.8: updater exit 0 and startup confirmation PASS. Final installed UI capture SKIP, user stopped Computer Use with Escape. |
 
@@ -137,10 +170,11 @@ modified/untracked docs, source and installed release files; they are preserved 
 excluded from the feature commits. Tools_C was read only and remains the sole
 canonical knowledge source. No deployment/router/cache knowledge was edited.
 
-Next recommended step: use the recovered 0.2.8 installation, check Skills / Contracts
-and the remaining live engine lifecycle QA. For the next release, verify Check
-Updates end to end with a single running Hub and confirm its failure dialog if a
-file is deliberately held. Preserve backups until acceptance is complete.
+Next recommended step: publish 0.2.9 after CI and use Check Updates. If Blender's
+tunnel needs a restart, use the app/terminal that started it; to transfer future
+lifecycle control to Hub, stop it there then Start in Hub. Remaining acceptance:
+installed 0.2.8 → 0.2.9 Check Updates; informational race notice visual QA; full
+engine lifecycle and previous updater/power-loss/DPI gates. Preserve backups.
 
 ## History — status before this pass
 

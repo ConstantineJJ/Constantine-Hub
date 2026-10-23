@@ -103,7 +103,7 @@ jobs:
           if (-not (Test-Path "$root/adapters/mcp-helper/McpHelper.exe")) { throw 'MCP Helper was not bundled.' }
           if (-not (Test-Path "$root/adapters/mcp-helper/package-manifest.json")) { throw 'MCP Helper manifest was not bundled.' }
 
-      - name: Real v0.2.9 upgrade and recovery fixture
+      - name: Real v0.2.9 and v0.3.0 upgrade and recovery fixtures
         timeout-minutes: 4
         shell: pwsh
         run: |
@@ -111,6 +111,12 @@ jobs:
           if ((Get-FileHash artifacts/previous.zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'f143c7eab39a75f57e080ea47ec70aa18c1a7af035916fba0a2de9799c80c082') { throw 'Previous release checksum mismatch.' }
           Expand-Archive artifacts/previous.zip artifacts/previous
           dotnet run --project apps/ConstantineHub.SmokeTests -c Release -- --upgrade-fixture artifacts/previous artifacts/ConstantineHub-win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'v0.2.9 upgrade fixture failed.' }
+          Invoke-WebRequest -Uri 'https://github.com/ConstantineJJ/Constantine-Hub/releases/download/v0.3.0/ConstantineHub-win-x64.zip' -OutFile artifacts/previous-030.zip
+          if ((Get-FileHash artifacts/previous-030.zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'd0c5728fb95170745a4eb20c4e71fcfcb9fc2dd73cb821e8b1ed0a99b75f68c7') { throw 'v0.3.0 checksum mismatch.' }
+          Expand-Archive artifacts/previous-030.zip artifacts/previous-030
+          dotnet run --project apps/ConstantineHub.SmokeTests -c Release -- --upgrade-fixture artifacts/previous-030 artifacts/ConstantineHub-win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'v0.3.0 upgrade fixture failed.' }
 
       - name: Read version and package release
         shell: pwsh

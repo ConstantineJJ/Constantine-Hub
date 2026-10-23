@@ -2,7 +2,7 @@
 
 Independent, read-only C# code navigation and rename preview over MCP.
 The executable works without Constantine Hub or Tools_C. Hub optionally manages
-the same service package. Version: **0.1.0**.
+the same service package. Version: **0.1.1**.
 
 ## Run
 
@@ -28,6 +28,8 @@ Seven tools expose status, API information, outline, symbols, references, impact
 and rename preview. Find a symbol, then pass its `symbol_id` and `snapshot_id`
 to a reference/impact/preview request (`symbolId` / `expectedSnapshot` arguments).
 Rename preview returns proposed edits and exact base-file hashes; it never writes.
+A rename that introduces compilation errors returns `E_CONFLICT` without edits;
+existing unresolved-dependency diagnostics remain explicit limitations.
 There is no apply tool or shell execution.
 
 Roslyn builds an in-memory workspace from UTF-8 `.cs` and `.csproj` files. Project

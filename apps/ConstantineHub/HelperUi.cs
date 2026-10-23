@@ -147,10 +147,13 @@ internal sealed partial class MainForm
         HelperSettings settings;
         try { settings = HelperSettings.Load(); }
         catch (Exception ex) { ErrorReporter.Show(ex, "MCP Helper settings", this); return; }
-        using var dialog = new Form { Text = "MCP Helper — workspace and package", Width = 660, Height = 330,
+        using var dialog = new Form { Text = "MCP Helper — workspace and package", Width = 660,
+            AutoScaleDimensions = new SizeF(96, 96), AutoScaleMode = AutoScaleMode.Dpi,
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(660, 0),
             StartPosition = FormStartPosition.CenterParent, Font = new Font("Segoe UI", 10F), MinimizeBox = false, MaximizeBox = false };
-        var grid = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(14), ColumnCount = 3, RowCount = 6 };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100)); grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+        var grid = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, Padding = new Padding(14), ColumnCount = 3, RowCount = 6 };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize)); grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        for (var row = 0; row < 6; row++) grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var workspace = new TextBox { Text = settings.WorkspaceRoot, Dock = DockStyle.Fill };
         var executable = new TextBox { Text = settings.Executable, PlaceholderText = "Bundled MCP Helper", Dock = DockStyle.Fill };
         var port = new NumericUpDown { Minimum = 1024, Maximum = 65535, Value = Math.Clamp(settings.Port, 1024, 65535), Width = 110 };
@@ -164,7 +167,7 @@ internal sealed partial class MainForm
         chooseExe.Click += (_, _) => { using var browse = new OpenFileDialog { Filter = "MCP Helper|McpHelper.exe" }; if (browse.ShowDialog(dialog) == DialogResult.OK) executable.Text = browse.FileName; };
         grid.Controls.Add(chooseExe, 2, 1);
         grid.Controls.Add(globals, 1, 3); grid.SetColumnSpan(globals, 2);
-        var hint = new Label { Text = "Helper reads C# files without running project builds.\nSave, then Start Helper. Connection copies your MCP client settings.", AutoSize = true };
+        var hint = new Label { Text = "Helper reads C# files without running project builds.\nSave, then Start Helper. Connection copies your MCP client settings.", AutoSize = true, MaximumSize = new Size(560, 0) };
         grid.Controls.Add(hint, 0, 4); grid.SetColumnSpan(hint, 3);
         var save = new Button { Text = "Save", AutoSize = true };
         save.Click += async (_, _) =>

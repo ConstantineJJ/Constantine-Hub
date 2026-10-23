@@ -16,7 +16,7 @@ public sealed class HelperTools(CodeEngine engine, HelperConfig config)
     }
 
     [McpServerTool(Name = "helper_status", ReadOnly = true), Description("Read-only Helper identity, workspace and backend capabilities. No project code is executed.")]
-    public string Status() => Encode(new { version = "0.1.0", instance_id = config.InstanceId,
+    public string Status() => Encode(new { version = "0.1.1", instance_id = config.InstanceId,
         workspace_root = engine.WorkspaceRoot, backend = "Roslyn AdhocWorkspace", backend_version = engine.BackendVersion,
         mode = "disk-read-only", analysis_coverage = "partial", apply_available = false,
         capabilities = new[] { "outline", "symbols", "references", "impact", "rename_preview" } });

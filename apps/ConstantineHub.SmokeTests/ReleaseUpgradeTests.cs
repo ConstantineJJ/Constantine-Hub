@@ -11,6 +11,7 @@ internal static class ReleaseUpgradeTests
 {
     internal static async Task Run(string previous, string candidate)
     {
+        var previousVersion = FileVersionInfo.GetVersionInfo(Path.Combine(previous, "ConstantineHub.dll")).FileVersion;
         var fixture = Path.Combine(Path.GetTempPath(), "hub-upgrade-" + Guid.NewGuid().ToString("N"));
         var target = Path.Combine(fixture, "installation");
         var backup = Path.Combine(fixture, "recovery");
@@ -26,13 +27,13 @@ internal static class ReleaseUpgradeTests
         using (var held = new FileStream(Path.Combine(target, "ConstantineHub.dll"), FileMode.Open, FileAccess.Read, FileShare.Read))
         {
             try { HubUpdaterProgram.ApplyFiles(candidate, target, backup, replaced, created, TimeSpan.FromMilliseconds(150)); throw new Exception("locked upgrade accepted"); }
-            catch (IOException) { Check(Hashes(target).OrderBy(p => p.Key).SequenceEqual(original.OrderBy(p => p.Key)), "locked v0.2.9 installation remains byte-for-byte unchanged"); }
+            catch (IOException) { Check(Hashes(target).OrderBy(p => p.Key).SequenceEqual(original.OrderBy(p => p.Key)), $"locked {previousVersion} installation remains byte-for-byte unchanged"); }
         }
         HubUpdaterProgram.ApplyFiles(candidate, target, backup, replaced, created, TimeSpan.FromSeconds(3));
-        Check(FileVersionInfo.GetVersionInfo(Path.Combine(target, "ConstantineHub.dll")).FileVersion == "0.3.0.0", "actual v0.2.9 payload upgraded to v0.3.0");
+        Check(FileVersionInfo.GetVersionInfo(Path.Combine(target, "ConstantineHub.dll")).FileVersion == "0.3.1.0", $"actual {previousVersion} payload upgraded to v0.3.1");
         Check(File.ReadAllText(Path.Combine(target, "user-settings.local.json")) == "preserve me", "upgrade preserves user installation files");
         var exe = Path.Combine(target, "adapters", "mcp-helper", "McpHelper.exe");
-        Check(HelperPackage.Verify(exe) == "0.1.0", "upgraded installation contains complete verified Helper package");
+        Check(HelperPackage.Verify(exe) == "0.1.1", "upgraded installation contains complete verified Helper package");
         var workspace = Path.Combine(fixture, "workspace"); Directory.CreateDirectory(workspace);
         File.WriteAllText(Path.Combine(workspace, "Sample.cs"), "public class Sample { public int Number() => 42; }");
         var settings = Path.Combine(fixture, "helper.json");
@@ -81,7 +82,7 @@ internal static class ReleaseUpgradeTests
         }
         Check(File.ReadAllBytes(settings).SequenceEqual(settingsBefore), "upgraded Hub startup preserves Helper user settings");
         Check(HubUpdaterProgram.RestoreBackup(target, backup, replaced, created, Path.Combine(fixture, "recovery.log")), "rollback restores real previous release");
-        Check(Hashes(target).OrderBy(p => p.Key).SequenceEqual(original.OrderBy(p => p.Key)), "rollback restores v0.2.9 files and removes newly created payload");
+        Check(Hashes(target).OrderBy(p => p.Key).SequenceEqual(original.OrderBy(p => p.Key)), $"rollback restores {previousVersion} files and removes newly created payload");
         Check(File.ReadAllBytes(settings).SequenceEqual(settingsBefore), "rollback preserves user configuration outside installation");
         Environment.SetEnvironmentVariable("CONSTANTINE_HELPER_SETTINGS", null);
         Console.WriteLine("RELEASE UPGRADE / RECOVERY PASS");

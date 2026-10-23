@@ -82,7 +82,7 @@ internal sealed class HelperAdapter : IHubAdapter, IDisposable
                 {
                     var identity = await HelperConnection.ProbeAsync(settings, cancellationToken);
                     if (identity.InstanceId != ownedInstance) throw new InvalidOperationException("Helper instance mismatch.");
-                    Log("MCP Helper ready (Hub-owned).");
+                    Log("Ready (Hub-owned).");
                     return;
                 }
                 await Task.Delay(150, cancellationToken);
@@ -123,7 +123,7 @@ internal sealed class HelperAdapter : IHubAdapter, IDisposable
         {
             process!.Kill(entireProcessTree: true);
             if (!process.WaitForExit(5000)) throw new TimeoutException("Owned Helper did not exit.");
-            Log("Stopped Hub-owned MCP Helper.");
+            Log("Stopped Hub-owned service.");
         }
         process?.Dispose(); process = null; ownedInstance = null;
         if (ownedConfig is not null && File.Exists(ownedConfig)) File.Delete(ownedConfig);
@@ -142,7 +142,7 @@ internal sealed class HelperAdapter : IHubAdapter, IDisposable
     private void Log(string? message)
     {
         if (string.IsNullOrWhiteSpace(message)) return;
-        LogLine?.Invoke(logToken.Length > 0 ? message.Replace(logToken, "[redacted]", StringComparison.Ordinal) : message);
+        LogLine?.Invoke("MCP Helper: " + (logToken.Length > 0 ? message.Replace(logToken, "[redacted]", StringComparison.Ordinal) : message));
     }
     public void Dispose() { disposed = true; lifetime.Cancel(); StopOwned(); }
 }

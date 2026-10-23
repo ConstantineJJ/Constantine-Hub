@@ -6,6 +6,41 @@ internal static class HelperUiTests
 {
     internal static void Run(MainForm form)
     {
+        // Exercise the actual production modal, not a substituted button handler.
+        var configurationFits = false;
+        using (var timer = new System.Windows.Forms.Timer { Interval = 150 })
+        {
+            timer.Tick += (_, _) =>
+            {
+                var dialog = Application.OpenForms.Cast<Form>().SingleOrDefault(f => f.Text == "MCP Helper — workspace and package");
+                if (dialog is null) return;
+                timer.Stop();
+                var save = Descendants<Button>(dialog).Single(b => b.Text == "Save");
+                configurationFits = save.Visible && save.RectangleToScreen(save.ClientRectangle).Bottom <= dialog.RectangleToScreen(dialog.ClientRectangle).Bottom
+                    && Descendants<Control>(dialog).Where(c => c.Visible).All(c => c.Right <= c.Parent!.ClientSize.Width && c.Bottom <= c.Parent.ClientSize.Height);
+                var evidence = Environment.GetEnvironmentVariable("HUB_UI_EVIDENCE");
+                if (!string.IsNullOrWhiteSpace(evidence))
+                {
+                    Directory.CreateDirectory(evidence);
+                    using var bitmap = new Bitmap(dialog.Width, dialog.Height);
+                    dialog.DrawToBitmap(bitmap, new Rectangle(Point.Empty, dialog.Size));
+                    bitmap.Save(Path.Combine(evidence, "helper-configure.png"));
+                }
+                dialog.Close();
+            };
+            timer.Start();
+            var task = (Task)typeof(MainForm).GetMethod("ConfigureHelperAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(form, null)!;
+            while (!task.IsCompleted) Pump();
+            task.GetAwaiter().GetResult();
+        }
+        Check(configurationFits, "R1 real Configure dialog and Save fit at native DPI");
+        var filter = typeof(MainForm).GetMethod("IsVerboseTunnelLine", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        bool Verbose(string line) => (bool)filter.Invoke(null, [line])!;
+        Check(Verbose("[time] MCP Helper: info: Microsoft.AspNetCore Request finished 200") &&
+            Verbose("[time] MCP Helper: dbug: Transport details") &&
+            !Verbose("[time] MCP Helper: warn: Slow request") &&
+            !Verbose("[time] MCP Helper: fail: Request failed") &&
+            !Verbose("[time] MCP Helper: Ready (Hub-owned)."), "R7 routine Helper diagnostics obey Verbose Off while warnings/errors/lifecycle remain visible");
         // Hosted desktops cap top-level windows at 1044px, even with explicit
         // MaximumSize. Exercise the same production shell in a sized child
         // viewport so both responsive modes are tested independently of the monitor.

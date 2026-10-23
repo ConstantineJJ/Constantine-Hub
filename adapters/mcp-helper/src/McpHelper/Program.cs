@@ -8,7 +8,7 @@ using ModelContextProtocol.AspNetCore;
 
 try
 {
-    if (args.Length == 1 && args[0] == "--version") { Console.WriteLine("MCP Helper 0.1.0"); return; }
+    if (args.Length == 1 && args[0] == "--version") { Console.WriteLine("MCP Helper 0.1.1"); return; }
     var http = args.Length > 0 && args[0] == "serve";
     var stdio = args.Length > 0 && args[0] == "stdio";
     if ((!http && !stdio) || args.Length != 3 || args[1] != "--config")
@@ -21,6 +21,7 @@ try
         var builder = Host.CreateApplicationBuilder();
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
+        builder.Services.Configure<SimpleConsoleFormatterOptions>(o => o.SingleLine = true);
         builder.Services.AddSingleton(config);
         builder.Services.AddSingleton(engine);
         builder.Services.AddMcpServer().WithStdioServerTransport().WithTools<HelperTools>();
@@ -31,6 +32,7 @@ try
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = AppContext.BaseDirectory });
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
+        builder.Services.Configure<SimpleConsoleFormatterOptions>(o => o.SingleLine = true);
         builder.WebHost.ConfigureKestrel(o => { o.Listen(IPAddress.Loopback, config.Port); o.Limits.MaxRequestBodySize = 65536; });
         builder.Services.AddSingleton(config);
         builder.Services.AddSingleton(engine);

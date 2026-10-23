@@ -53,9 +53,9 @@ def main():
     (licenses / "DEPENDENCIES.txt").write_text("Resolved NuGet dependencies. See each package license/nuspec and notices.\n\n" + "\n".join(notices) + "\n", encoding="utf-8")
     files = {p.relative_to(output).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
              for p in sorted(output.rglob("*")) if p.is_file()}
-    manifest = {"kind": "mcp-helper-package", "schemaVersion": 1, "version": "0.1.0", "entrypoint": "McpHelper.exe", "files": files}
+    manifest = {"kind": "mcp-helper-package", "schemaVersion": 1, "version": "0.1.1", "entrypoint": "McpHelper.exe", "files": files}
     (output / "package-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"package": str(output), "version": "0.1.0", "files": len(files)}))
+    print(json.dumps({"package": str(output), "version": "0.1.1", "files": len(files)}))
 
 
 if __name__ == "__main__":

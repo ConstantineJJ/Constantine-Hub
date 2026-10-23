@@ -14,7 +14,7 @@ internal static class HelperPackage
         using var manifest = JsonDocument.Parse(File.ReadAllText(path));
         var m = manifest.RootElement;
         if (m.GetProperty("kind").GetString() != "mcp-helper-package" || m.GetProperty("schemaVersion").GetInt32() != 1 ||
-            m.GetProperty("version").GetString() != "0.1.0" || m.GetProperty("entrypoint").GetString() != "McpHelper.exe" ||
+            m.GetProperty("version").GetString() != "0.1.1" || m.GetProperty("entrypoint").GetString() != "McpHelper.exe" ||
             Path.GetFileName(executable) != "McpHelper.exe") throw new InvalidDataException("Unsupported Helper package identity.");
         var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in m.GetProperty("files").EnumerateObject())
@@ -34,7 +34,7 @@ internal static class HelperPackage
         var actual = Enumerate(root).Select(p => Path.GetRelativePath(root, p).Replace('\\', '/'))
             .Where(p => p != "package-manifest.json").ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (!actual.SetEquals(expected)) throw new InvalidDataException("Helper package contains unexpected files.");
-        return "0.1.0";
+        return "0.1.1";
     }
 
     private static IEnumerable<string> Enumerate(string root)

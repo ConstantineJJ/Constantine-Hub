@@ -41,7 +41,7 @@ def exercise(request):
     tools = request(payload("tools/list"))["result"]["tools"]
     check(len(tools) == 7 and all(t["annotations"]["readOnlyHint"] for t in tools), "seven read-only tools; apply absent")
     status = decoded(request(payload("tools/call", {"name": "helper_status", "arguments": {}})))
-    check(status["version"] == "0.1.0" and not status["apply_available"], "standalone version and no apply")
+    check(status["version"] == "0.1.1" and not status["apply_available"], "standalone version and no apply")
     found = decoded(request(payload("tools/call", {"name": "helper_find_symbol", "arguments": {"query": "Echo"}})))
     check(len(found["results"]) == 2, "semantic overloads through actual MCP transport")
     symbol = next(x for x in found["results"] if "int" in x["signature"])
@@ -50,6 +50,16 @@ def exercise(request):
     check(refs["total"] == 3 and refs["analysis_coverage"] == "partial", "cross-project references and honest coverage")
     preview = decoded(request(payload("tools/call", {"name": "helper_refactor_preview", "arguments": dict(args, newName="Repeat")})))
     check(preview["total"] == 4 and len(preview["edits"]) == 3, "exact rename preview without apply")
+    first = decoded(request(payload("tools/call", {"name": "helper_find_symbol", "arguments": {"query": "First"}})))
+    conflict = decoded(request(payload("tools/call", {"name": "helper_refactor_preview", "arguments": {
+        "symbolId": first["results"][0]["symbol_id"], "expectedSnapshot": first["snapshot_id"], "newName": "Second"}})))
+    check(conflict["error_code"] == "E_CONFLICT" and not conflict["edits"], "conflicting rename rejected through actual MCP transport")
+    ready = decoded(request(payload("tools/call", {"name": "helper_find_symbol", "arguments": {"query": "Ready"}})))
+    check(len(ready["results"]) == 1, "enum member discovery through actual MCP transport")
+    service = decoded(request(payload("tools/call", {"name": "helper_find_symbol", "arguments": {"query": "Service"}})))
+    impact = decoded(request(payload("tools/call", {"name": "helper_impact", "arguments": {
+        "symbolId": service["results"][0]["symbol_id"], "expectedSnapshot": service["snapshot_id"]}})))
+    check({"Library/Service.cs", "Library/Other.cs"} <= set(impact["affected_files"]), "impact includes every partial declaration over MCP")
     invalid = decoded(request(payload("tools/call", {"name": "helper_outline", "arguments": {"file": "../outside.cs"}})))
     check(invalid["error_code"] == "E_SCOPE", "transport cannot escape workspace")
 
@@ -66,6 +76,7 @@ def run(executable):
         (workspace / "Library/Service.cs").write_text('namespace Demo; public partial class Service { public int Echo(int n) => n; public string Echo(string s) => s; }')
         (workspace / "Library/Other.cs").write_text('namespace Demo; public partial class Service { public int Twice() => Echo(1) + Echo(2); }')
         (workspace / "App/Caller.cs").write_text('public class Caller { public int Run() => new Demo.Service().Echo(3); }')
+        (workspace / "Library/Conflict.cs").write_text('public class Collision { public void First() {} public void Second() {} } public enum State { Ready, Done }')
         before = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in workspace.rglob("*") if p.is_file()}
         token = secrets.token_hex(32)
         with socket.socket() as sock:

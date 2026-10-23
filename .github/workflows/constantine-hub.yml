@@ -8,14 +8,18 @@ on:
       - 'apps/ConstantineHub.Updater/**'
       - 'apps/ConstantineHub.SmokeTests/**'
       - 'adapters/godot-mcp/**'
+      - 'adapters/mcp-helper/**'
       - '.github/workflows/constantine-hub.yml'
+      - 'global.json'
   pull_request:
     paths:
       - 'apps/ConstantineHub/**'
       - 'apps/ConstantineHub.Updater/**'
       - 'apps/ConstantineHub.SmokeTests/**'
       - 'adapters/godot-mcp/**'
+      - 'adapters/mcp-helper/**'
       - '.github/workflows/constantine-hub.yml'
+      - 'global.json'
 
 permissions:
   contents: write
@@ -26,10 +30,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Setup .NET 10
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
 
       - name: Restore
         run: |
@@ -45,6 +53,36 @@ jobs:
         timeout-minutes: 2
         run: dotnet run --project apps/ConstantineHub.SmokeTests/ConstantineHub.SmokeTests.csproj -c Release
 
+      - name: C# semantic backend regression
+        run: dotnet run --project adapters/mcp-helper/tests/McpHelper.Tests -c Release --artifacts-path artifacts/helper-tests
+
+      - name: Audit resolved runtime dependencies
+        shell: pwsh
+        run: |
+          dotnet restore adapters/mcp-helper/src/McpHelper --locked-mode
+          foreach ($project in @('apps/ConstantineHub', 'adapters/mcp-helper/src/McpHelper')) {
+            $text = dotnet list $project package --vulnerable --include-transitive --format json
+            if ($LASTEXITCODE -ne 0) { throw "Dependency audit failed: $project" }
+            $audit = $text | ConvertFrom-Json
+            if ($audit.problems -or $audit.logs) { throw "Dependency audit reported unresolved diagnostics: $project" }
+            foreach ($p in $audit.projects) {
+              foreach ($framework in $p.frameworks) {
+                foreach ($package in @($framework.topLevelPackages) + @($framework.transitivePackages)) {
+                  if ($package.vulnerabilities) { throw "Vulnerable dependency: $($package.id)" }
+                }
+              }
+            }
+          }
+
+      - name: Publish independent Helper with runtime and file manifest
+        run: python adapters/mcp-helper/package.py --output artifacts/McpHelper-win-x64 --artifacts artifacts/helper-build
+
+      - name: Real standalone MCP transport acceptance
+        run: python adapters/mcp-helper/tests/protocol_smoke.py artifacts/McpHelper-win-x64/McpHelper.exe
+
+      - name: Hub-owned and external Helper lifecycle
+        run: dotnet run --project apps/ConstantineHub.SmokeTests -c Release -- --helper-package artifacts/McpHelper-win-x64
+
       - name: Publish portable win-x64
         shell: pwsh
         run: |
@@ -52,6 +90,8 @@ jobs:
           dotnet publish apps/ConstantineHub.Updater/ConstantineHub.Updater.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o artifacts/Updater
           New-Item -ItemType Directory -Force -Path 'artifacts/ConstantineHub-win-x64' | Out-Null
           Copy-Item 'artifacts/Updater/*' 'artifacts/ConstantineHub-win-x64/' -Recurse -Force
+          New-Item -ItemType Directory -Force -Path 'artifacts/ConstantineHub-win-x64/adapters' | Out-Null
+          Copy-Item -LiteralPath 'artifacts/McpHelper-win-x64' -Destination 'artifacts/ConstantineHub-win-x64/adapters/mcp-helper' -Recurse
 
       - name: Verify bundled Godot adapter and updater
         shell: pwsh
@@ -60,6 +100,17 @@ jobs:
           if (-not (Test-Path "$root/adapters/godot-mcp/run_godot_mcp.cmd")) { throw 'Godot MCP launcher was not bundled.' }
           if (-not (Test-Path "$root/adapters/godot-mcp/project-addon/addons/constantine_mcp/plugin.cfg")) { throw 'Godot addon was not bundled.' }
           if (-not (Test-Path "$root/ConstantineHub.Updater.exe")) { throw 'Constantine Hub updater was not bundled.' }
+          if (-not (Test-Path "$root/adapters/mcp-helper/McpHelper.exe")) { throw 'MCP Helper was not bundled.' }
+          if (-not (Test-Path "$root/adapters/mcp-helper/package-manifest.json")) { throw 'MCP Helper manifest was not bundled.' }
+
+      - name: Real v0.2.9 upgrade and recovery fixture
+        timeout-minutes: 4
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri 'https://github.com/ConstantineJJ/Constantine-Hub/releases/download/v0.2.9/ConstantineHub-win-x64.zip' -OutFile artifacts/previous.zip
+          if ((Get-FileHash artifacts/previous.zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'f143c7eab39a75f57e080ea47ec70aa18c1a7af035916fba0a2de9799c80c082') { throw 'Previous release checksum mismatch.' }
+          Expand-Archive artifacts/previous.zip artifacts/previous
+          dotnet run --project apps/ConstantineHub.SmokeTests -c Release -- --upgrade-fixture artifacts/previous artifacts/ConstantineHub-win-x64
 
       - name: Read version and package release
         shell: pwsh
@@ -73,6 +124,9 @@ jobs:
           Compress-Archive -Path 'artifacts/ConstantineHub-win-x64/*' -DestinationPath $zip -Force
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  ConstantineHub-win-x64.zip" | Set-Content 'artifacts/ConstantineHub-win-x64.sha256' -Encoding ascii
+          Compress-Archive -Path 'artifacts/McpHelper-win-x64/*' -DestinationPath 'artifacts/McpHelper-win-x64.zip'
+          $helperHash = (Get-FileHash 'artifacts/McpHelper-win-x64.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$helperHash  McpHelper-win-x64.zip" | Set-Content 'artifacts/McpHelper-win-x64.sha256' -Encoding ascii
 
       - name: Upload CI artifact
         uses: actions/upload-artifact@v4
@@ -90,11 +144,13 @@ jobs:
           $stableTag = "v$env:HUB_VERSION"
           $zip = 'artifacts/ConstantineHub-win-x64.zip'
           $sha = 'artifacts/ConstantineHub-win-x64.sha256'
+          $helperZip = 'artifacts/McpHelper-win-x64.zip'
+          $helperSha = 'artifacts/McpHelper-win-x64.sha256'
 
           gh release view $stableTag *> $null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $stableTag $zip $sha --target '${{ github.sha }}' --title "Constantine Hub $stableTag" --generate-notes
+            gh release create $stableTag $zip $sha $helperZip $helperSha --target '${{ github.sha }}' --title "Constantine Hub $stableTag" --generate-notes
           }
 
           $devTag = "v$env:HUB_VERSION-dev.${{ github.run_number }}"
-          gh release create $devTag $zip $sha --target '${{ github.sha }}' --title "Constantine Hub $devTag" --prerelease --generate-notes
+          gh release create $devTag $zip $sha $helperZip $helperSha --target '${{ github.sha }}' --title "Constantine Hub $devTag" --prerelease --generate-notes

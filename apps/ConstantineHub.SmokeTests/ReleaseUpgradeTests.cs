@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
 using ConstantineHub.Adapters.Helper;
+using ConstantineHub.Adapters.Godot;
 using ConstantineHub.Updater;
 using HubUpdaterProgram = ConstantineHub.Updater.Program;
 
@@ -53,6 +54,18 @@ internal static class ReleaseUpgradeTests
         start.Environment["CONSTANTINE_GODOT_MCP_CONFIG"] = Path.Combine(fixture, "godot.json");
         start.Environment["CONSTANTINE_FILES_CONFIG"] = Path.Combine(fixture, "files.json");
         start.Environment["TUNNEL_CLIENT_PROFILE_DIR"] = fixture;
+        // The existing Godot adapter requires a configured project at construction.
+        // Supply an isolated fixture, just like the UI suite, rather than relying
+        // on the developer workstation's fallback project on F:.
+        File.WriteAllText(Path.Combine(fixture, "project.godot"), "[application]\nconfig/name=\"Upgrade fixture\"\n");
+        var previousGodotConfig = Environment.GetEnvironmentVariable("CONSTANTINE_GODOT_MCP_CONFIG");
+        try
+        {
+            Environment.SetEnvironmentVariable("CONSTANTINE_GODOT_MCP_CONFIG", start.Environment["CONSTANTINE_GODOT_MCP_CONFIG"]);
+            GodotSettingsStore.Save(new GodotSettings(fixture, "upgrade-godot", "tunnel_upgrade", 8082,
+                "127.0.0.1", 6262, "127.0.0.1", 6263, null, fixture, false));
+        }
+        finally { Environment.SetEnvironmentVariable("CONSTANTINE_GODOT_MCP_CONFIG", previousGodotConfig); }
         using (var hub = Process.Start(start) ?? throw new Exception("Cannot launch upgraded Hub"))
         {
             try

@@ -80,7 +80,8 @@ internal static class HelperLifecycleTests
             {
                 using var client = await slow.AcceptTcpClientAsync();
                 var stream = client.GetStream();
-                await stream.ReadAsync(new byte[4096]);
+                var received = await stream.ReadAsync(new byte[4096]);
+                if (received == 0) return;
                 await stream.WriteAsync(System.Text.Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1000\r\n\r\n{"));
                 await Task.Delay(4000);
             });

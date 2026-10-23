@@ -6,6 +6,12 @@ internal static class HelperUiTests
 {
     internal static void Run(MainForm form)
     {
+        // Hosted Windows runners can clamp the initial window to a small desktop.
+        // Give this explicit wide-layout fixture its own tracking bounds.
+        var scale = Math.Max(1f, form.DeviceDpi / 96f);
+        form.MaximumSize = new Size((int)(2400 * scale), (int)(1800 * scale));
+        form.Size = new Size((int)(1600 * scale), (int)(900 * scale));
+        Pump();
         var panel = Descendants<TableLayoutPanel>(form).Single(p => p.Name == "McpHelperPanel");
         var split = panel.Parent as TableLayoutPanel ?? throw new Exception("Helper split is missing");
         var body = split.Parent!;
@@ -14,6 +20,7 @@ internal static class HelperUiTests
         var toggle = header.Controls.OfType<Button>().Single(b => b.Text is "⌄" or "⌃");
         if (!panel.Visible) toggle.PerformClick();
         Pump();
+        Console.WriteLine($"Helper layout fixture: DPI={form.DeviceDpi}, window={form.Width}, body={body.Width}, row={split.GetCellPosition(panel).Row}, column={split.GetCellPosition(panel).Column}");
         Check(panel.Visible && split.GetCellPosition(panel).Column == 1, "Helper occupies requested right-hand Blender detail area");
         Check(Descendants<Label>(panel).Any(l => l.Text == "MCP HELPER"), "Helper has an independent title and controls");
         foreach (var button in Descendants<Button>(panel))

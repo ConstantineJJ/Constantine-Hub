@@ -76,6 +76,10 @@ public sealed class CodeEngine
                 {
                     var renamed = await Renamer.RenameSymbolAsync(solution, declaration.Symbol,
                         new SymbolRenameOptions(), newName!, token);
+                    var baselineErrors = await CompilationErrors(solution, token);
+                    var candidateErrors = await CompilationErrors(renamed, token, solution);
+                    if (candidateErrors.Any(e => e.Value > baselineErrors.GetValueOrDefault(e.Key)))
+                        throw new ScopeException("E_CONFLICT", "Rename introduces compilation conflicts; no edits returned. Choose a different name.");
                     var edits = new List<ProposedFile>();
                     foreach (var project in renamed.GetChanges(solution).GetProjectChanges())
                     foreach (var id in project.GetChangedDocuments())
@@ -108,7 +112,8 @@ public sealed class CodeEngine
                             Relative(location.Document.FilePath), Range(location.Location.GetLineSpan().Span), "reference"));
                     }
                     locations = locations.DistinctBy(l => (l.File, l.Range.Start.Line, l.Range.Start.Character)).ToList();
-                    result = result with { AffectedFiles = locations.Select(l => l.File).Append(declaration.Location.File)
+                    result = result with { AffectedFiles = locations.Select(l => l.File).Concat(declaration.Symbol.Locations
+                            .Where(l => l.IsInSource).Select(l => Relative(l.SourceTree!.FilePath)))
                         .Distinct().Order(StringComparer.Ordinal).ToList() };
                 }
             }
@@ -168,7 +173,7 @@ public sealed class CodeEngine
         foreach (var file in files.Where(f => f.RelativePath.EndsWith(".cs", StringComparison.Ordinal)))
         {
             var owner = projects.Where(p => file.FullPath.StartsWith(Path.GetDirectoryName(p.FullPath)! + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(p => p.FullPath.Length).FirstOrDefault();
+                .OrderByDescending(p => Path.GetDirectoryName(p.FullPath)!.Length).FirstOrDefault();
             var project = owner is null ? fallback : ids[owner.FullPath];
             solution = solution.AddDocument(DocumentId.CreateNewId(project), file.RelativePath,
                 SourceText.From(file.Text, Encoding.UTF8), filePath: file.FullPath);
@@ -191,7 +196,7 @@ public sealed class CodeEngine
             var root = await document.GetSyntaxRootAsync(token);
             var model = await document.GetSemanticModelAsync(token);
             foreach (var node in root!.DescendantNodes().Where(n => n is BaseTypeDeclarationSyntax or BaseMethodDeclarationSyntax
-                or PropertyDeclarationSyntax or VariableDeclaratorSyntax or DelegateDeclarationSyntax or EventDeclarationSyntax))
+                or PropertyDeclarationSyntax or VariableDeclaratorSyntax or DelegateDeclarationSyntax or EventDeclarationSyntax or EnumMemberDeclarationSyntax))
             {
                 token.ThrowIfCancellationRequested();
                 var symbol = model!.GetDeclaredSymbol(node, token);
@@ -209,5 +214,49 @@ public sealed class CodeEngine
         return found;
     }
     private string Relative(string full) => Path.GetRelativePath(scope.Root, full).Replace('\\', '/');
+    private static async Task<Dictionary<string, int>> CompilationErrors(Solution solution, CancellationToken token, Solution? baseline = null)
+    {
+        var errors = new Dictionary<string, int>(StringComparer.Ordinal);
+        var mappedChanges = new Dictionary<DocumentId, IReadOnlyList<TextChange>>();
+        foreach (var project in solution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync(token);
+            foreach (var diagnostic in compilation!.GetDiagnostics(token).Where(d => d.Severity == DiagnosticSeverity.Error))
+            {
+                var key = project.Name + ":" + diagnostic.Id;
+                if (diagnostic.Location.IsInSource)
+                {
+                    var document = solution.GetDocument(diagnostic.Location.SourceTree!)!;
+                    var span = diagnostic.Location.SourceSpan;
+                    var start = span.Start; var end = span.End;
+                    if (baseline?.GetDocument(document.Id) is { } original)
+                    {
+                        if (!mappedChanges.TryGetValue(document.Id, out var changes))
+                            mappedChanges[document.Id] = changes = (await document.GetTextChangesAsync(original, token)).OrderBy(c => c.Span.Start).ToArray();
+                        start = OriginalOffset(start, changes); end = OriginalOffset(end, changes);
+                    }
+                    // Messages can contain the renamed symbol. Match diagnostic
+                    // identity at its original location instead of message text.
+                    key += ":" + document.FilePath + ":" + start + ":" + end;
+                }
+                else key += ":" + diagnostic.GetMessage(System.Globalization.CultureInfo.InvariantCulture);
+                errors[key] = errors.GetValueOrDefault(key) + 1;
+            }
+        }
+        return errors;
+    }
+    private static int OriginalOffset(int position, IReadOnlyList<TextChange> changes)
+    {
+        var delta = 0;
+        foreach (var change in changes)
+        {
+            var start = change.Span.Start + delta;
+            if (position < start) break;
+            var length = change.NewText?.Length ?? 0;
+            if (position < start + length) return change.Span.Start + Math.Min(position - start, change.Span.Length);
+            delta += length - change.Span.Length;
+        }
+        return position - delta;
+    }
     private static SourceRange Range(LinePositionSpan span) => new(new(span.Start.Line, span.Start.Character), new(span.End.Line, span.End.Character));
 }

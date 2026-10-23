@@ -20,7 +20,7 @@ internal static class HelperLifecycleTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start(); var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
         var executable = Path.Combine(Path.GetFullPath(package), "McpHelper.exe");
-        Check(HelperPackage.Verify(executable) == "0.1.0", "standalone package manifest and every file hash verified");
+        Check(HelperPackage.Verify(executable) == "0.1.1", "standalone package manifest and every file hash verified");
         var settings = new HelperSettings(workspace, executable, port, false, HelperSettings.NewToken());
         settings.Save();
         var logs = new List<string>();

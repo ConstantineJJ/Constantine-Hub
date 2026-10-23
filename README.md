@@ -35,7 +35,7 @@ the C# workspace, save and select **Start Helper**. **Connection** copies the en
 and authentication for your MCP client. Keep that connection data private.
 Global Start/Stop participation is opt-in in Helper configuration.
 
-Helper **0.1.0** is bundled with Hub **0.3.0** and is also available as a standalone
+Helper **0.1.1** is bundled with Hub **0.3.1** and is also available as a standalone
 `McpHelper-win-x64.zip` in the same release. It includes its own runtime and works
 without Hub or Tools_C. [Standalone usage and API](adapters/mcp-helper/README.md).
 

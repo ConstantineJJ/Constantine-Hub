@@ -759,6 +759,9 @@ internal sealed partial class MainForm : Form
 
     private static bool IsVerboseTunnelLine(string line)
     {
+        if (line.Contains("MCP Helper: info:", StringComparison.Ordinal) ||
+            line.Contains("MCP Helper: dbug:", StringComparison.Ordinal) ||
+            line.Contains("MCP Helper: trce:", StringComparison.Ordinal)) return true;
         if (!line.Contains("{\"time\":", StringComparison.Ordinal))
             return false;
         return !line.Contains("\"level\":\"ERROR\"", StringComparison.OrdinalIgnoreCase) &&

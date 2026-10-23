@@ -13,7 +13,7 @@ internal static class HelperConnection
     internal static async Task<HelperIdentity> ProbeAsync(HelperSettings settings, CancellationToken cancellationToken)
     {
         using var init = await Request(settings, "initialize", new { protocolVersion = "2025-11-25", capabilities = new { },
-            clientInfo = new { name = "ConstantineHub", version = "0.3.0" } }, cancellationToken);
+            clientInfo = new { name = "ConstantineHub", version = "0.3.1" } }, cancellationToken);
         if (!init.RootElement.TryGetProperty("result", out var initialized) || !initialized.TryGetProperty("serverInfo", out _))
             throw new InvalidDataException("Helper MCP initialization failed.");
         using var listed = await Request(settings, "tools/list", new { }, cancellationToken);
@@ -29,7 +29,7 @@ internal static class HelperConnection
         var root = status.RootElement;
         var version = root.GetProperty("version").GetString()!;
         var workspace = root.GetProperty("workspace_root").GetString()!;
-        if (version != "0.1.0" || root.GetProperty("apply_available").GetBoolean() ||
+        if (version != "0.1.1" || root.GetProperty("apply_available").GetBoolean() ||
             !string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(workspace)), Path.TrimEndingDirectorySeparator(Path.GetFullPath(settings.WorkspaceRoot)), StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Helper version, workspace or capabilities disagree with configuration.");
         return new(version, root.GetProperty("instance_id").GetString()!, workspace);

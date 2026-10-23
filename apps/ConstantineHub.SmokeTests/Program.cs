@@ -18,6 +18,16 @@ internal static class Program
             return ExportFixture(exportDirectory);
         if (args is ["run", "--profile", var profile])
             return TunnelLifecycleTests.Serve(profile);
+        if (args is ["--helper-package", var package])
+        {
+            HelperLifecycleTests.Run(package).GetAwaiter().GetResult();
+            return 0;
+        }
+        if (args is ["--upgrade-fixture", var previous, var candidate])
+        {
+            ReleaseUpgradeTests.Run(previous, candidate).GetAwaiter().GetResult();
+            return 0;
+        }
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
@@ -39,6 +49,7 @@ internal static class Program
             File.WriteAllText(Path.Combine(fixture, "project.godot"), "[application]\nconfig/name=\"Hub smoke tests\"\n");
             Environment.SetEnvironmentVariable("CONSTANTINE_GODOT_MCP_CONFIG", Path.Combine(fixture, "godot.json"));
             Environment.SetEnvironmentVariable("CONSTANTINE_FILES_CONFIG", Path.Combine(fixture, "files.json"));
+            Environment.SetEnvironmentVariable("CONSTANTINE_HELPER_SETTINGS", Path.Combine(fixture, "helper.json"));
             Environment.SetEnvironmentVariable("TUNNEL_CLIENT_PROFILE_DIR", fixture);
             Environment.SetEnvironmentVariable("TUNNEL_CLIENT_PROFILE_FILE", null);
             GodotSettingsStore.Save(new GodotSettings(fixture, "smoke-godot", "tunnel_smoke", 8082,
@@ -86,6 +97,7 @@ internal static class Program
                 toggle.PerformClick();
                 Pump();
             }
+            HelperUiTests.Run(form);
             foreach (var action in Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart"))
             {
                 var calls = 0;

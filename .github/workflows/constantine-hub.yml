@@ -41,7 +41,7 @@ jobs:
 
       - name: Restore
         run: |
-          dotnet restore apps/ConstantineHub/ConstantineHub.csproj
+          dotnet restore apps/ConstantineHub/ConstantineHub.csproj --locked-mode
           dotnet restore apps/ConstantineHub.Updater/ConstantineHub.Updater.csproj
 
       - name: Build
@@ -86,7 +86,7 @@ jobs:
       - name: Publish portable win-x64
         shell: pwsh
         run: |
-          dotnet publish apps/ConstantineHub/ConstantineHub.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o artifacts/ConstantineHub-win-x64
+          dotnet publish apps/ConstantineHub/ConstantineHub.csproj -c Release -r win-x64 --self-contained false -p:RestoreLockedMode=true -p:PublishSingleFile=false -o artifacts/ConstantineHub-win-x64
           dotnet publish apps/ConstantineHub.Updater/ConstantineHub.Updater.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o artifacts/Updater
           New-Item -ItemType Directory -Force -Path 'artifacts/ConstantineHub-win-x64' | Out-Null
           Copy-Item 'artifacts/Updater/*' 'artifacts/ConstantineHub-win-x64/' -Recurse -Force

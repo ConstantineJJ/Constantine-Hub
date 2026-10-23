@@ -19,6 +19,8 @@ public sealed class CodeEngine
     private static readonly Lazy<ImmutableArray<MetadataReference>> RuntimeReferences = new(() =>
         ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? "")
         .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+        .Where(p => Path.GetFileName(p).StartsWith("System.", StringComparison.Ordinal) ||
+            Path.GetFileName(p) is "netstandard.dll" or "mscorlib.dll" or "Microsoft.CSharp.dll")
         .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToImmutableArray());
     public string WorkspaceRoot => scope.Root;
     public string BackendVersion => typeof(CSharpCompilation).Assembly.GetName().Version!.ToString();
@@ -144,10 +146,12 @@ public sealed class CodeEngine
         solution = AddProject(solution, fallback, "LooseFiles");
         foreach (var project in projects)
         {
-            solution = AddProject(solution, ids[project.FullPath], project.RelativePath);
             using var reader = XmlReader.Create(new StringReader(project.Text), new XmlReaderSettings
                 { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 1024 * 1024 });
             var xml = XDocument.Load(reader);
+            var assemblyName = xml.Descendants().FirstOrDefault(e => e.Name.LocalName == "AssemblyName")?.Value
+                ?? Path.GetFileNameWithoutExtension(project.FullPath);
+            solution = AddProject(solution, ids[project.FullPath], project.RelativePath, assemblyName);
             foreach (var reference in xml.Descendants().Where(e => e.Name.LocalName == "ProjectReference"))
             {
                 var include = reference.Attribute("Include")?.Value;
@@ -172,8 +176,8 @@ public sealed class CodeEngine
         return solution;
     }
 
-    private static Solution AddProject(Solution solution, ProjectId id, string name) => solution
-        .AddProject(ProjectInfo.Create(id, VersionStamp.Create(), name, "Workspace_" + id.Id.ToString("N"), LanguageNames.CSharp,
+    private static Solution AddProject(Solution solution, ProjectId id, string name, string? assemblyName = null) => solution
+        .AddProject(ProjectInfo.Create(id, VersionStamp.Create(), name, assemblyName ?? "Workspace_" + id.Id.ToString("N"), LanguageNames.CSharp,
             compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
             parseOptions: new CSharpParseOptions(LanguageVersion.Latest), metadataReferences: RuntimeReferences.Value));
 

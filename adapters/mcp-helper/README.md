@@ -53,4 +53,4 @@ python adapters/mcp-helper/tests/protocol_smoke.py adapters/mcp-helper/src/McpHe
 ```
 
 NuGet dependencies are pinned in project/lock files. The standalone Windows release
-will include its own runtime. Source builds require the .NET/ASP.NET Core 10 runtime.
+includes its own runtime. Source builds require the .NET/ASP.NET Core 10 runtime.

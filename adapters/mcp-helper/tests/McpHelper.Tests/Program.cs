@@ -54,6 +54,8 @@ var link = Path.Combine(fixture, "escape");
 Directory.CreateSymbolicLink(link, Path.GetTempPath());
 Check((await engine.QueryAsync("find_symbol", query: "Echo")).ErrorCode == "E_SCOPE", "directory symlinks rejected");
 Directory.Delete(link);
+await File.WriteAllBytesAsync(Path.Combine(lib, "TooLarge.cs"), new byte[1024 * 1024 + 1]);
+Check((await engine.QueryAsync("find_symbol", query: "Echo")).ErrorCode == "E_LIMIT", "oversized source rejected before semantic analysis");
 Console.WriteLine("CORE PASS");
 
 static void Check(bool ok, string message)

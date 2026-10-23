@@ -5,7 +5,7 @@ using ConstantineHub.Core;
 
 namespace ConstantineHub;
 
-internal sealed class MainForm : Form
+internal sealed partial class MainForm : Form
 {
     private readonly LocalFilesAdapter _localFiles = new();
     private readonly BlenderAdapter _blender = new();
@@ -65,6 +65,7 @@ internal sealed class MainForm : Form
         _localFiles.LogLine += LogFromAnyThread;
         _blender.LogLine += LogFromAnyThread;
         _godot.LogLine += LogFromAnyThread;
+        _helper.LogLine += LogFromAnyThread;
         _statusTimer.Tick += async (_, _) => await RefreshStatusAsync();
         _statusTimer.Start();
 
@@ -93,6 +94,8 @@ internal sealed class MainForm : Form
             _localFiles.Dispose();
             _blender.Dispose();
             _godot.Dispose();
+            _helper.LogLine -= LogFromAnyThread;
+            _helper.Dispose();
         };
     }
 
@@ -457,6 +460,7 @@ internal sealed class MainForm : Form
                     : "Idle / runtime not running");
             SetState(_godotTunnel, godot.TunnelStatus.State, godot.TunnelStatus.Summary);
             UpdateTunnelActions(_godot.Id, godot.TunnelStatus.State);
+            await RefreshHelperAsync();
             SetStatus(_godotSkills, godot.SkillsOk, godot.SkillsSummary);
             _connections = [
                 new("Local Files", local.State, SetupIssue: summary.ConfigValid ? null : summary.Message),
@@ -486,12 +490,14 @@ internal sealed class MainForm : Form
         await RunAdapterActionQuietAsync("Start Local Files", _localFiles.StartAsync);
         await RunAdapterActionQuietAsync("Start Blender MCP", _blender.StartAsync);
         await RunAdapterActionQuietAsync("Start Godot MCP", _godot.StartAsync);
+        if (HelperInGlobalActions()) await RunAdapterActionQuietAsync("Start MCP Helper", _helper.StartAsync);
         await RefreshStatusAsync();
     }
 
     private async Task StopAllOwnedAsync()
     {
         Log("Stop Hub-Owned requested. External/adopted tunnels will be left untouched.");
+        if (HelperInGlobalActions()) await RunAdapterActionQuietAsync("Stop MCP Helper", _helper.StopAsync);
         await RunAdapterActionQuietAsync("Stop Godot MCP", _godot.StopAsync);
         await RunAdapterActionQuietAsync("Stop Blender MCP", _blender.StopAsync);
         await RunAdapterActionQuietAsync("Stop Local Files", _localFiles.StopAsync);

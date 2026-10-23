@@ -40,6 +40,7 @@ internal static class UiAcceptancePass
         }
 
         form.PerformLayout();
+        form.AttachHelperPanel();
     }
 
     private static void PolishNavigation(MainForm form, Control? navigation)

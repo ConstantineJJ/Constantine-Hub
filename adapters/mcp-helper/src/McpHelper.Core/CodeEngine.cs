@@ -77,7 +77,7 @@ public sealed class CodeEngine
                     var renamed = await Renamer.RenameSymbolAsync(solution, declaration.Symbol,
                         new SymbolRenameOptions(), newName!, token);
                     var baselineErrors = await CompilationErrors(solution, token);
-                    var candidateErrors = await CompilationErrors(renamed, token);
+                    var candidateErrors = await CompilationErrors(renamed, token, solution);
                     if (candidateErrors.Any(e => e.Value > baselineErrors.GetValueOrDefault(e.Key)))
                         throw new ScopeException("E_CONFLICT", "Rename introduces compilation conflicts; no edits returned. Choose a different name.");
                     var edits = new List<ProposedFile>();
@@ -214,21 +214,49 @@ public sealed class CodeEngine
         return found;
     }
     private string Relative(string full) => Path.GetRelativePath(scope.Root, full).Replace('\\', '/');
-    private static async Task<Dictionary<string, int>> CompilationErrors(Solution solution, CancellationToken token)
+    private static async Task<Dictionary<string, int>> CompilationErrors(Solution solution, CancellationToken token, Solution? baseline = null)
     {
         var errors = new Dictionary<string, int>(StringComparer.Ordinal);
+        var mappedChanges = new Dictionary<DocumentId, IReadOnlyList<TextChange>>();
         foreach (var project in solution.Projects)
         {
             var compilation = await project.GetCompilationAsync(token);
             foreach (var diagnostic in compilation!.GetDiagnostics(token).Where(d => d.Severity == DiagnosticSeverity.Error))
             {
-                // Compare error multiplicity, not offsets: a safe rename may move an
-                // existing unresolved dependency without creating a new error.
-                var key = project.Name + ":" + diagnostic.Id + ":" + diagnostic.GetMessage(System.Globalization.CultureInfo.InvariantCulture);
+                var key = project.Name + ":" + diagnostic.Id;
+                if (diagnostic.Location.IsInSource)
+                {
+                    var document = solution.GetDocument(diagnostic.Location.SourceTree!)!;
+                    var span = diagnostic.Location.SourceSpan;
+                    var start = span.Start; var end = span.End;
+                    if (baseline?.GetDocument(document.Id) is { } original)
+                    {
+                        if (!mappedChanges.TryGetValue(document.Id, out var changes))
+                            mappedChanges[document.Id] = changes = (await document.GetTextChangesAsync(original, token)).OrderBy(c => c.Span.Start).ToArray();
+                        start = OriginalOffset(start, changes); end = OriginalOffset(end, changes);
+                    }
+                    // Messages can contain the renamed symbol. Match diagnostic
+                    // identity at its original location instead of message text.
+                    key += ":" + document.FilePath + ":" + start + ":" + end;
+                }
+                else key += ":" + diagnostic.GetMessage(System.Globalization.CultureInfo.InvariantCulture);
                 errors[key] = errors.GetValueOrDefault(key) + 1;
             }
         }
         return errors;
+    }
+    private static int OriginalOffset(int position, IReadOnlyList<TextChange> changes)
+    {
+        var delta = 0;
+        foreach (var change in changes)
+        {
+            var start = change.Span.Start + delta;
+            if (position < start) break;
+            var length = change.NewText?.Length ?? 0;
+            if (position < start + length) return change.Span.Start + Math.Min(position - start, change.Span.Length);
+            delta += length - change.Span.Length;
+        }
+        return position - delta;
     }
     private static SourceRange Range(LinePositionSpan span) => new(new(span.Start.Line, span.Start.Character), new(span.End.Line, span.End.Character));
 }

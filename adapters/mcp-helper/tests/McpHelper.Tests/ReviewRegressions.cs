@@ -53,6 +53,10 @@ internal static class ReviewRegressions
         var run = await unresolved.QueryAsync("find_symbol", query: "Run");
         var safe = await unresolved.QueryAsync("preview", symbolId: run.Results.Single().SymbolId, newName: "Execute");
         Check(safe.OperationStatus == "PASS" && safe.Edits.Count == 1 && safe.Warnings.Any(w => w.Contains("compilation errors")), "R2 pre-existing unresolved dependencies do not block a safe rename");
+        var incomplete = new CodeEngine(Fixture("interface", new() { ["Demo.cs"] = "public interface IWorker { void Run(); } public class Demo : IWorker {}" }));
+        var demo = await incomplete.QueryAsync("find_symbol", query: "Demo");
+        var renamed = await incomplete.QueryAsync("preview", symbolId: demo.Results.Single().SymbolId, newName: "Worker");
+        Check(renamed.OperationStatus == "PASS" && renamed.Edits.Count == 1, "R2 existing diagnostics may mention a renamed class without becoming new conflicts");
         if (failures.Count > 0) throw new Exception("Review regressions: " + string.Join("; ", failures));
     }
 }

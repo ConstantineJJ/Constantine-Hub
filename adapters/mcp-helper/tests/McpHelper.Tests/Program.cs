@@ -1,5 +1,7 @@
 using McpHelper.Core;
 
+await ReviewRegressions.Run();
+
 var fixture = Path.Combine(Path.GetTempPath(), "mcp-helper-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(fixture);
 var lib = Path.Combine(fixture, "Library");

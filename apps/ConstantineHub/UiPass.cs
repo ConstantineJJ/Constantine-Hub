@@ -68,7 +68,7 @@ internal static class UiPass
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var adapterCards = new List<AdapterCardHost>();
-        var uiTimer = new System.Windows.Forms.Timer { Interval = 1200 };
+        var uiTimer = new System.Windows.Forms.Timer { Interval = 2500 };
         var toolTip = new ToolTip
         {
             AutoPopDelay = 12000,
@@ -212,9 +212,12 @@ internal static class UiPass
                 ? StripStatusBullet(godotValues[0].Text)
                 : "Not configured";
             currentProjectTop.Text = $"Profile: Local workstation  •  Project: {projectText}";
-            projectRail.Text = projectText;
             toolTip.SetToolTip(currentProjectTop, projectText);
-            toolTip.SetToolTip(projectRail, projectText);
+            if (!projectRail.IsDisposed)
+            {
+                projectRail.Text = projectText;
+                toolTip.SetToolTip(projectRail, projectText);
+            }
 
             var connections = form.Connections;
             healthRail.Text = connections.Title;
@@ -229,7 +232,7 @@ internal static class UiPass
             toolTip.SetToolTip(healthRail, connections.Description);
             toolTip.SetToolTip(healthDetail, connections.Description);
 
-            var updateState = ReadUpdateState(log.Text);
+            var updateState = ReadUpdateState(form.UpdateLogTail);
             updateTop.Text = updateState;
             updateRail.Text = updateState;
             updateRail.ForeColor = updateState.Contains("available", StringComparison.OrdinalIgnoreCase)
@@ -239,7 +242,7 @@ internal static class UiPass
                     : TextSecondary;
         }
 
-        uiTimer.Tick += (_, _) => UpdateChrome();
+        uiTimer.Tick += (_, _) => { if (form.Visible) UpdateChrome(); };
         uiTimer.Start();
         form.FormClosed += (_, _) =>
         {
@@ -303,7 +306,7 @@ internal static class UiPass
             Dock = DockStyle.Fill,
             SizeMode = PictureBoxSizeMode.Zoom,
             Margin = new Padding(0, 0, Scale(form, 8), 0),
-            Image = LoadAsset("WatermelonCat.png")
+            Image = LoadAsset("CH_Ico.png")
         };
         brand.Controls.Add(icon, 0, 0);
 

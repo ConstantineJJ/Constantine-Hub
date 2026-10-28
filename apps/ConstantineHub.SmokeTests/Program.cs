@@ -41,10 +41,11 @@ internal static class Program
             }, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan);
             TestConnections();
             TestUpdater();
+            PackageRetirementTests.Run();
             TunnelLifecycleTests.Run();
             TestPluginInstaller(args.Length == 2 && args[0] == "--plugin-client" ? args[1] : null);
             // A hosted CI runner has no workstation Godot project/configuration.
-            var fixture = Path.Combine(AppContext.BaseDirectory, "smoke-fixture");
+            var fixture = Path.Combine(AppContext.BaseDirectory, "smoke-fixture-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(fixture);
             File.WriteAllText(Path.Combine(fixture, "project.godot"), "[application]\nconfig/name=\"Hub smoke tests\"\n");
             Environment.SetEnvironmentVariable("CONSTANTINE_GODOT_MCP_CONFIG", Path.Combine(fixture, "godot.json"));
@@ -55,13 +56,18 @@ internal static class Program
             GodotSettingsStore.Save(new GodotSettings(fixture, "smoke-godot", "tunnel_smoke", 8082,
                 "127.0.0.1", 6262, "127.0.0.1", 6263, null, fixture, false));
             TestCanonicalKnowledge(fixture);
+            GodotProjectTests.Run(fixture);
+            WorkspaceFeaturesTests.FileHandling(fixture);
             Console.WriteLine("Constructing UI");
-            using var form = new MainForm { ShowInTaskbar = false };
+            using var form = new MainForm(enableTray: false);
             UiPass.Apply(form);
             UiAcceptancePass.Apply(form);
             Console.WriteLine("Showing UI");
             form.Show();
             Pump();
+            WorkspaceFeaturesTests.WindowBehavior(form);
+            WorkspaceFeaturesTests.Dashboard(form);
+            WorkspaceFeaturesTests.FileWindow(form, fixture);
             Check(Descendants<Label>(form).Any(l => l.Text == "MCP CONNECTIONS"), "semantic connection card present");
             Check(!Descendants<Label>(form).Any(l => l.Text == "Needs attention"), "inactive bridges do not show generic program error");
             var shortcuts = Descendants<Button>(form).Where(b => b.Text is "Skills" or "Contracts").ToArray();
@@ -98,7 +104,7 @@ internal static class Program
                 Pump();
             }
             HelperUiTests.Run(form);
-            foreach (var action in Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart"))
+            foreach (var action in Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart" && !b.Name.StartsWith("rail-")))
             {
                 var calls = 0;
                 action.Tag = new EventHandler((_, _) => calls++);
@@ -108,7 +114,7 @@ internal static class Program
 
             foreach (var id in new[] { "local-files", "blender", "godot" })
                 form.UpdateTunnelActions(id, AdapterState.External);
-            var protectedActions = Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart").ToArray();
+            var protectedActions = Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart" && !b.Name.StartsWith("rail-")).ToArray();
             Check(protectedActions.Length == 6 && protectedActions.All(b => !b.Enabled), "external tunnels disable Stop/Restart in all adapter cards");
             Check(Descendants<Label>(form).Count(l => l.Tag is string hint && hint == ExternalTunnelControlException.Guidance) == 3,
                 "each external tunnel has launcher/restart guidance");
@@ -155,7 +161,7 @@ internal static class Program
             localInstall.Tag = new EventHandler((_, _) => dispatched++);
             MainForm.InvokeButtonAction(localInstall);
             Check(dispatched == 1, "plugin install action dispatches");
-            form.Close();
+            form.RequestExit();
             Pump();
             Check(menu.IsDisposed, "Settings menu disposed with owner");
             Console.WriteLine("PASS: all UI regressions");

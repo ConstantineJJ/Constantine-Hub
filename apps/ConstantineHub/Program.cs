@@ -26,7 +26,10 @@ internal static class Program
         ApplicationConfiguration.Initialize();
 
         var options = ParseArgs(args);
-        var form = new MainForm();
+        using var instance = options.ContainsKey("isolated-instance") ? null : new Core.HubInstance();
+        if (instance?.ActivateExisting() == true) return;
+        using var form = new MainForm(enableTray: !options.ContainsKey("no-tray"));
+        instance?.Listen(form);
         UiPass.Apply(form);
         UiAcceptancePass.Apply(form);
         form.Shown += (_, _) =>

@@ -10,7 +10,7 @@ internal sealed partial class MainForm : Form
     private readonly LocalFilesAdapter _localFiles = new();
     private readonly BlenderAdapter _blender = new();
     private readonly GodotAdapter _godot = new();
-    private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 1500 };
+    private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 5000 };
     private readonly RichTextBox _log = new();
     private readonly NotifyIcon _trayIcon = new();
     private readonly UpdateService _updates = new();
@@ -40,6 +40,9 @@ internal sealed partial class MainForm : Form
     private bool _refreshing;
     private bool _checkingUpdates;
     private bool _trayHintShown;
+    private bool _exitRequested;
+    private readonly bool _enableTray;
+    internal string UpdateLogTail => string.Join(Environment.NewLine, _allLogLines.TakeLast(40));
     private FormWindowState _restoreWindowState = FormWindowState.Normal;
 
     private static readonly Color Good = Color.FromArgb(92, 201, 120);
@@ -47,8 +50,9 @@ internal sealed partial class MainForm : Form
     private static readonly Color Warn = Color.FromArgb(232, 188, 104);
     private static readonly Color Muted = Color.FromArgb(170, 174, 184);
 
-    internal MainForm()
+    internal MainForm(bool enableTray = true)
     {
+        _enableTray = enableTray;
         Text = "Constantine Hub";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(1040, 980);
@@ -71,10 +75,17 @@ internal sealed partial class MainForm : Form
 
         Resize += (_, _) =>
         {
-            if (WindowState == FormWindowState.Minimized)
-                HideToTray();
-            else if (WindowState != FormWindowState.Minimized)
+            if (WindowState != FormWindowState.Minimized)
                 _restoreWindowState = WindowState;
+        };
+        VisibleChanged += (_, _) => _statusTimer.Interval = Visible ? 5000 : 15000;
+        FormClosing += (_, e) =>
+        {
+            if (!_exitRequested && e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                HideToTray();
+            }
         };
 
         Shown += async (_, _) =>
@@ -82,14 +93,16 @@ internal sealed partial class MainForm : Form
             Log($"Constantine Hub v{GetDisplayVersion()} started.");
             Log("Local Files MCP, Blender MCP and Godot MCP are managed adapters.");
             await RefreshStatusAsync();
-            _ = CheckForUpdatesAsync(silentWhenCurrent: true);
+            if (_enableTray) _ = CheckForUpdatesAsync(silentWhenCurrent: true);
         };
 
         FormClosed += (_, _) =>
         {
             _statusTimer.Stop();
             _trayIcon.Visible = false;
+            _trayIcon.ContextMenuStrip?.Dispose();
             _trayIcon.Dispose();
+            _statusTimer.Dispose();
             _tunnelActionTips.Dispose();
             _localFiles.Dispose();
             _blender.Dispose();
@@ -365,13 +378,19 @@ internal sealed partial class MainForm : Form
         menu.Items.Add("Start All", null, async (_, _) => await StartAllAsync());
         menu.Items.Add("Stop Hub-Owned", null, async (_, _) => await StopAllOwnedAsync());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit", null, (_, _) => Close());
+        menu.Items.Add("Exit", null, (_, _) => RequestExit());
 
         _trayIcon.Text = "Constantine Hub";
         _trayIcon.Icon = AppIconProvider.Current;
         _trayIcon.ContextMenuStrip = menu;
-        _trayIcon.Visible = true;
+        _trayIcon.Visible = _enableTray;
         _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+    }
+
+    internal void RequestExit()
+    {
+        _exitRequested = true;
+        Close();
     }
 
     private void HideToTray()
@@ -382,7 +401,7 @@ internal sealed partial class MainForm : Form
         Hide();
         ShowInTaskbar = false;
 
-        if (_trayHintShown)
+        if (_trayHintShown || !_enableTray)
             return;
 
         _trayHintShown = true;
@@ -400,7 +419,7 @@ internal sealed partial class MainForm : Form
         }
     }
 
-    private void RestoreFromTray()
+    internal void RestoreFromTray()
     {
         if (!Visible)
             Show();
@@ -453,7 +472,7 @@ internal sealed partial class MainForm : Form
             SetOptionalStatus(_godotEditor, godot.EditorBridgeConnected,
                 godot.EditorBridgeConnected
                     ? $"Connected {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}"
-                    : $"Not listening on {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}");
+                    : godot.EditorBridgeIssue ?? $"Not listening on {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}");
             SetOptionalStatus(_godotRuntime, godot.RuntimeBridgeConnected,
                 godot.RuntimeBridgeConnected
                     ? $"Connected {_godot.Settings.RuntimeHost}:{_godot.Settings.RuntimePort}"
@@ -471,6 +490,7 @@ internal sealed partial class MainForm : Form
                     !godot.Plugin.Installed || !godot.Plugin.Enabled ? godot.Plugin.Message :
                     !godot.SkillsOk ? godot.SkillsSummary : null)
             ];
+            UpdateBridgeRail(local, blender, godot);
             _actionErrors.Remove("Status check");
         }
         catch (Exception ex)
@@ -731,6 +751,7 @@ internal sealed partial class MainForm : Form
             await _updates.StageAndLaunchAsync(update, current);
             Log("Updater started. Constantine Hub will now exit and restart.");
             _trayIcon.Visible = false;
+            _exitRequested = true;
             Application.Exit();
         }
         catch (Exception ex)
@@ -794,17 +815,24 @@ internal sealed partial class MainForm : Form
 
     private void Log(string message)
     {
+        if (IsDisposed || Disposing) return;
         if (InvokeRequired)
         {
-            BeginInvoke(new Action(() => Log(message)));
+            QueueLog(message);
             return;
         }
 
         var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
         _allLogLines.Add(line);
+        if (_allLogLines.Count > 3000) _allLogLines.RemoveRange(0, 500);
         if (_verboseLogs || !IsVerboseTunnelLine(line))
         {
             _log.AppendText(line + Environment.NewLine);
+            if (_log.TextLength > 250000)
+            {
+                _log.Select(0, 50000);
+                _log.SelectedText = string.Empty;
+            }
             _log.SelectionStart = _log.TextLength;
             _log.ScrollToCaret();
         }
@@ -824,7 +852,7 @@ internal sealed partial class MainForm : Form
             return;
 
         File.WriteAllText(dialog.FileName, string.Join(Environment.NewLine, _allLogLines) + Environment.NewLine);
-        Log("Log saved (full diagnostics): " + dialog.FileName);
+        Log("Log saved (recent session diagnostics): " + dialog.FileName);
     }
 
     private static string GetDisplayVersion()

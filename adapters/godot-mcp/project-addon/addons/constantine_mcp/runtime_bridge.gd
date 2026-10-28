@@ -49,6 +49,9 @@ func _handle_line(line: String) -> Dictionary:
 	var parsed = JSON.parse_string(line)
 	if not (parsed is Dictionary): return {"ok": false, "error": "Invalid JSON request"}
 	var request_id = parsed.get("id")
+	var requested_project := str(parsed.get("project_root", ""))
+	if not requested_project.is_empty() and requested_project.replace("\\", "/").trim_suffix("/").to_lower() != ProjectSettings.globalize_path("res://").replace("\\", "/").trim_suffix("/").to_lower():
+		return {"id": request_id, "ok": false, "error": "Bridge belongs to another Godot project; open the selected project."}
 	var op := str(parsed.get("op", ""))
 	var params = parsed.get("params", {})
 	if not (params is Dictionary): params = {}

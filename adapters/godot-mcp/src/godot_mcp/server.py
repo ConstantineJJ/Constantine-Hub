@@ -12,8 +12,8 @@ mcp = MCPServer("Constantine Godot MCP")
 _settings = load_settings()
 _project = ProjectService(_settings)
 _skills = GodotSkillsService(_settings)
-_editor = JsonLineBridge(BridgeEndpoint(_settings.editor_host, _settings.editor_port, "Godot editor"))
-_runtime = JsonLineBridge(BridgeEndpoint(_settings.runtime_host, _settings.runtime_port, "Godot runtime"))
+_editor = JsonLineBridge(BridgeEndpoint(_settings.editor_host, _settings.editor_port, "Godot editor"), project_root=_settings.project_root)
+_runtime = JsonLineBridge(BridgeEndpoint(_settings.runtime_host, _settings.runtime_port, "Godot runtime"), project_root=_settings.project_root)
 
 def _bridge(target: str) -> JsonLineBridge:
     if target == "editor": return _editor
@@ -25,16 +25,16 @@ def godot_status() -> dict:
     """Check Godot editor/runtime bridge connectivity plus project and canonical Tools_C context."""
     result: dict[str, Any] = {
         "project_root": str(_settings.project_root),
-        "editor_bridge": {"endpoint": f"{_settings.editor_host}:{_settings.editor_port}", "connected": _editor.probe()},
-        "runtime_bridge": {"endpoint": f"{_settings.runtime_host}:{_settings.runtime_port}", "connected": _runtime.probe()},
+        "editor_bridge": {"endpoint": f"{_settings.editor_host}:{_settings.editor_port}", "connected": False},
+        "runtime_bridge": {"endpoint": f"{_settings.runtime_host}:{_settings.runtime_port}", "connected": False},
         "skills": _skills.list_skills(),
     }
-    if result["editor_bridge"]["connected"]:
-        try: result["editor"] = _editor.call("status")
-        except Exception as exc: result["editor_error"] = str(exc)
-    if result["runtime_bridge"]["connected"]:
-        try: result["runtime"] = _runtime.call("status")
-        except Exception as exc: result["runtime_error"] = str(exc)
+    for name, bridge in (("editor", _editor), ("runtime", _runtime)):
+        try:
+            result[name] = bridge.call("status")
+            result[name + "_bridge"]["connected"] = True
+        except Exception as exc:
+            result[name + "_error"] = str(exc)
     result["managed_run"] = _project.get_output(after=0, limit=1)["running"]
     return result
 

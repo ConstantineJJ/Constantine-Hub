@@ -13,11 +13,14 @@ internal sealed record GodotAdapterSnapshot(
     bool RuntimeBridgeConnected,
     string SkillsSummary,
     bool SkillsOk,
-    AdapterStatus TunnelStatus);
+    AdapterStatus TunnelStatus,
+    string? EditorBridgeIssue = null,
+    string? RuntimeBridgeIssue = null);
 
 internal sealed class GodotAdapter : TunnelProfileAdapterBase
 {
     private GodotSettings _settings;
+    private readonly SemaphoreSlim _projectSwitch = new(1, 1);
 
     internal GodotAdapter() : this(GodotSettingsStore.Load()) { }
     private GodotAdapter(GodotSettings settings) : base(settings.TunnelProfile) => _settings = settings;
@@ -30,11 +33,52 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
     {
         _settings = GodotSettingsStore.Load();
         var plugin = GodotPluginInstaller.Inspect(_settings);
-        var editor = await PortProbe.CanConnectAsync(_settings.EditorHost, _settings.EditorPort, 450, cancellationToken);
-        var runtime = await PortProbe.CanConnectAsync(_settings.RuntimeHost, _settings.RuntimePort, 350, cancellationToken);
+        var editor = await GodotBridgeProbe.ProbeAsync(_settings.EditorHost, _settings.EditorPort, _settings.ProjectRoot, cancellationToken);
+        var runtime = await GodotBridgeProbe.ProbeAsync(_settings.RuntimeHost, _settings.RuntimePort, _settings.ProjectRoot, cancellationToken);
         var skills = VerifySkills(_settings);
         var tunnel = await base.GetStatusAsync(cancellationToken);
-        return new(true, _settings.ProjectRoot, plugin, IsGodotRunning(), ExecutableLocator.FindGodot(_settings.GodotExecutable), editor, runtime, skills.Message, skills.Success, tunnel);
+        return new(true, _settings.ProjectRoot, plugin, editor.Connected, ExecutableLocator.FindGodot(_settings.GodotExecutable), editor.Connected, runtime.Connected, skills.Message, skills.Success, tunnel,
+            editor.Connected ? null : editor.Message, runtime.Connected ? null : runtime.Message);
+    }
+
+    internal async Task SelectProjectAsync(string projectRoot, CancellationToken cancellationToken = default)
+    {
+        await _projectSwitch.WaitAsync(cancellationToken);
+        try
+        {
+            var previous = GodotSettingsStore.Load();
+            if (GodotProjectRegistry.SameProject(previous.ProjectRoot, projectRoot)) return;
+            var candidate = previous with { ProjectRoot = Path.GetFullPath(projectRoot) };
+            GodotSettingsStore.Validate(candidate);
+            var current = await TunnelRuntimeProbe.ProbeAsync(ProfileName, cancellationToken);
+            if (!OwnsRunningTunnel && current.State == TunnelRuntimeState.RunningExpected)
+                throw new InvalidOperationException("Stop the Godot tunnel in the launcher that owns it before switching projects. The current tunnel is managed outside Hub.");
+            if (current.State == TunnelRuntimeState.Occupied)
+                throw new InvalidOperationException("The Godot tunnel health port is occupied. Stop its current owner before switching projects.");
+            GodotProjectRegistry.Register(candidate.ProjectRoot);
+            var restart = OwnsRunningTunnel;
+            if (restart) await base.StopAsync(cancellationToken);
+            try
+            {
+                GodotSettingsStore.Save(candidate);
+                _settings = candidate;
+                if (restart) await StartAsync(cancellationToken);
+                Log("Selected project: " + candidate.ProjectRoot);
+            }
+            catch
+            {
+                await base.StopAsync(CancellationToken.None);
+                GodotSettingsStore.Save(previous);
+                _settings = previous;
+                if (restart)
+                {
+                    try { await StartAsync(CancellationToken.None); }
+                    catch (Exception restoreError) { Log("Previous project restored; tunnel restart failed: " + restoreError.Message); }
+                }
+                throw;
+            }
+        }
+        finally { _projectSwitch.Release(); }
     }
 
     public override async Task<AdapterStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -80,12 +124,14 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
             throw new InvalidOperationException(pluginAfter.Message);
 
         await EnsureTunnelProfileAsync(cancellationToken);
-        if (_settings.AutoLaunchGodot && !IsGodotRunning())
+        var selectedEditor = await GodotBridgeProbe.ProbeAsync(_settings.EditorHost, _settings.EditorPort, _settings.ProjectRoot, cancellationToken);
+        if (_settings.AutoLaunchGodot && !selectedEditor.Connected && !selectedEditor.Message.Contains("another project", StringComparison.OrdinalIgnoreCase))
             LaunchGodot();
         await base.StartAsync(cancellationToken);
 
-        if (!await PortProbe.CanConnectAsync(_settings.EditorHost, _settings.EditorPort, 700, cancellationToken))
-            Log($"Tunnel is ready, but Godot editor bridge {_settings.EditorHost}:{_settings.EditorPort} is not listening yet. Reload the project or enable the Constantine MCP editor plugin.");
+        var readyEditor = await GodotBridgeProbe.ProbeAsync(_settings.EditorHost, _settings.EditorPort, _settings.ProjectRoot, cancellationToken);
+        if (!readyEditor.Connected)
+            Log("Tunnel is ready; " + readyEditor.Message + " Reload the selected project or enable its Constantine MCP editor plugin.");
     }
 
     internal GodotPluginStatus InstallOrUpdatePlugin()
@@ -109,19 +155,19 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
         }
 
         var plugin = GodotPluginInstaller.Inspect(_settings);
-        var editor = await PortProbe.CanConnectAsync(_settings.EditorHost, _settings.EditorPort, 600, cancellationToken);
-        var runtime = await PortProbe.CanConnectAsync(_settings.RuntimeHost, _settings.RuntimePort, 450, cancellationToken);
+        var editor = await GodotBridgeProbe.ProbeAsync(_settings.EditorHost, _settings.EditorPort, _settings.ProjectRoot, cancellationToken);
+        var runtime = await GodotBridgeProbe.ProbeAsync(_settings.RuntimeHost, _settings.RuntimePort, _settings.ProjectRoot, cancellationToken);
         var skills = VerifySkills(_settings);
         var executable = ExecutableLocator.FindGodot(_settings.GodotExecutable);
 
         lines.Add(string.Empty);
         lines.Add("GODOT");
         lines.Add("Project: " + _settings.ProjectRoot);
-        lines.Add("Process: " + (IsGodotRunning() ? "running" : "not running"));
+        lines.Add("Selected project editor: " + (editor.Connected ? "connected" : "not connected"));
         lines.Add("Executable: " + (executable ?? "not found"));
         lines.Add("Plugin: " + plugin.Message);
-        lines.Add($"Editor bridge: {(editor ? "connected" : "not listening")} {_settings.EditorHost}:{_settings.EditorPort}");
-        lines.Add($"Runtime bridge: {(runtime ? "connected" : "not listening")} {_settings.RuntimeHost}:{_settings.RuntimePort}");
+        lines.Add("Editor bridge: " + editor.Message);
+        lines.Add("Runtime bridge: " + runtime.Message);
         lines.Add($"Skills/contracts: {(skills.Success ? "PASS" : "FAIL")} — {skills.Message}");
         return string.Join(Environment.NewLine, lines);
     }
@@ -188,12 +234,6 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
         info.ArgumentList.Add(_settings.ProjectRoot);
         Process.Start(info);
         Log("Godot launched: " + executable);
-    }
-
-    private static bool IsGodotRunning()
-    {
-        try { return Process.GetProcesses().Any(process => process.ProcessName.Contains("godot", StringComparison.OrdinalIgnoreCase) && !process.HasExited); }
-        catch { return false; }
     }
 
     private static (bool Success, string Message) VerifySkills(GodotSettings settings)

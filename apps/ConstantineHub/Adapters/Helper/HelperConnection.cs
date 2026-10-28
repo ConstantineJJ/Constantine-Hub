@@ -10,10 +10,37 @@ internal static class HelperConnection
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(3) };
     private static int nextId;
+    internal static async Task<HelperIdentity> ProbeHealthAsync(HelperSettings settings, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(3));
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"http://127.0.0.1:{settings.Port}/health");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", settings.Token);
+        using var response = await Http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+        // Existing standalone 0.1.1 installations still use the full MCP probe.
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return await ProbeAsync(settings, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
+        using var body = new MemoryStream();
+        var buffer = new byte[1024];
+        while (true)
+        {
+            var count = await stream.ReadAsync(buffer, timeout.Token);
+            if (count == 0) break;
+            if (body.Length + count > 16384) throw new InvalidDataException("Helper health response exceeds limit.");
+            body.Write(buffer, 0, count);
+        }
+        using var status = JsonDocument.Parse(body.ToArray());
+        if (!status.RootElement.GetProperty("mcp_ready").GetBoolean())
+            throw new InvalidDataException("Helper MCP endpoint is not ready.");
+        return ReadIdentity(status.RootElement, settings);
+    }
+
     internal static async Task<HelperIdentity> ProbeAsync(HelperSettings settings, CancellationToken cancellationToken)
     {
         using var init = await Request(settings, "initialize", new { protocolVersion = "2025-11-25", capabilities = new { },
-            clientInfo = new { name = "ConstantineHub", version = "0.3.1" } }, cancellationToken);
+            clientInfo = new { name = "ConstantineHub", version = "0.4.0" } }, cancellationToken);
         if (!init.RootElement.TryGetProperty("result", out var initialized) || !initialized.TryGetProperty("serverInfo", out _))
             throw new InvalidDataException("Helper MCP initialization failed.");
         using var listed = await Request(settings, "tools/list", new { }, cancellationToken);
@@ -26,10 +53,14 @@ internal static class HelperConnection
         if (result.TryGetProperty("isError", out var error) && error.GetBoolean()) throw new InvalidDataException("Helper status call failed.");
         var body = result.GetProperty("content").EnumerateArray().First(c => c.GetProperty("type").GetString() == "text").GetProperty("text").GetString()!;
         using var status = JsonDocument.Parse(body);
-        var root = status.RootElement;
+        return ReadIdentity(status.RootElement, settings);
+    }
+
+    private static HelperIdentity ReadIdentity(JsonElement root, HelperSettings settings)
+    {
         var version = root.GetProperty("version").GetString()!;
         var workspace = root.GetProperty("workspace_root").GetString()!;
-        if (version != "0.1.1" || root.GetProperty("apply_available").GetBoolean() ||
+        if (version is not ("0.1.1" or "0.1.2") || root.GetProperty("apply_available").GetBoolean() ||
             !string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(workspace)), Path.TrimEndingDirectorySeparator(Path.GetFullPath(settings.WorkspaceRoot)), StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("Helper version, workspace or capabilities disagree with configuration.");
         return new(version, root.GetProperty("instance_id").GetString()!, workspace);

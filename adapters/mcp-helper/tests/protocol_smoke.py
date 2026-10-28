@@ -41,7 +41,7 @@ def exercise(request):
     tools = request(payload("tools/list"))["result"]["tools"]
     check(len(tools) == 7 and all(t["annotations"]["readOnlyHint"] for t in tools), "seven read-only tools; apply absent")
     status = decoded(request(payload("tools/call", {"name": "helper_status", "arguments": {}})))
-    check(status["version"] == "0.1.1" and not status["apply_available"], "standalone version and no apply")
+    check(status["version"] == "0.1.2" and not status["apply_available"], "standalone version and no apply")
     found = decoded(request(payload("tools/call", {"name": "helper_find_symbol", "arguments": {"query": "Echo"}})))
     check(len(found["results"]) == 2, "semantic overloads through actual MCP transport")
     symbol = next(x for x in found["results"] if "int" in x["signature"])
@@ -153,3 +153,5 @@ def run(executable):
 
 if __name__ == "__main__":
     run(Path(sys.argv[1]).resolve())
+    from health_smoke import run as run_health
+    run_health(Path(sys.argv[1]).resolve())

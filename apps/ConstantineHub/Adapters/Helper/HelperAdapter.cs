@@ -28,7 +28,7 @@ internal sealed class HelperAdapter : IHubAdapter, IDisposable
             if (string.IsNullOrWhiteSpace(settings.WorkspaceRoot)) return new(Id, DisplayName, AdapterState.NotConfigured, "Choose a workspace");
             settings.Validate();
             if (!await PortOpen(settings.Port, cancellationToken)) return new(Id, DisplayName, OwnsProcess ? AdapterState.Starting : AdapterState.Stopped, "Stopped");
-            var identity = await HelperConnection.ProbeAsync(settings, cancellationToken);
+            var identity = await HelperConnection.ProbeHealthAsync(settings, cancellationToken);
             if (OwnsProcess && identity.InstanceId != ownedInstance)
                 return new(Id, DisplayName, AdapterState.Degraded, "Endpoint does not match the owned Helper instance");
             return new(Id, DisplayName, OwnsProcess ? AdapterState.Running : AdapterState.External,
@@ -114,6 +114,12 @@ internal sealed class HelperAdapter : IHubAdapter, IDisposable
         settings.Validate();
         var package = HelperPackage.Verify(settings.ExecutablePath);
         var state = await GetStatusAsync(cancellationToken);
+        if (state.State is AdapterState.Running or AdapterState.External)
+        {
+            var identity = await HelperConnection.ProbeAsync(settings, cancellationToken);
+            if (OwnsProcess && identity.InstanceId != ownedInstance)
+                throw new InvalidDataException("Helper instance changed during Doctor.");
+        }
         return $"Package {package}: hashes verified.\nWorkspace: {settings.WorkspaceRoot}\nEndpoint: http://127.0.0.1:{settings.Port}/mcp\nMCP: {state.State} — {state.Summary}\nBackend: Roslyn, partial disk-only analysis; no project code execution.\nApply: unavailable.";
     }
 

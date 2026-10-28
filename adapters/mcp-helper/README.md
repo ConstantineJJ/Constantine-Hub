@@ -2,7 +2,7 @@
 
 Independent, read-only C# code navigation and rename preview over MCP.
 The executable works without Constantine Hub or Tools_C. Hub optionally manages
-the same service package. Version: **0.1.1**.
+the same service package. Version: **0.1.2**.
 
 ## Run
 
@@ -21,6 +21,11 @@ Create a local JSON config outside your repository:
 `McpHelper.exe serve --config <path>` starts authenticated Streamable HTTP at
 `http://127.0.0.1:19273/mcp`. Pass `Authorization: Bearer <Token>` from your MCP
 client. Keep tokens out of command lines and repository files. No tunnel is created.
+
+Hub's periodic refresh uses authenticated `GET /health`, which returns the same
+instance/workspace identity without opening MCP sessions or reading source files.
+Start and Doctor still verify the actual MCP initialize, catalog and status call.
+Routine HTTP/MCP information logs are disabled by default; warnings and errors remain.
 
 ## Capabilities and limits
 

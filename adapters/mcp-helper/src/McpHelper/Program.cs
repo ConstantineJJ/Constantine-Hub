@@ -8,7 +8,7 @@ using ModelContextProtocol.AspNetCore;
 
 try
 {
-    if (args.Length == 1 && args[0] == "--version") { Console.WriteLine("MCP Helper 0.1.1"); return; }
+    if (args.Length == 1 && args[0] == "--version") { Console.WriteLine("MCP Helper 0.1.2"); return; }
     var http = args.Length > 0 && args[0] == "serve";
     var stdio = args.Length > 0 && args[0] == "stdio";
     if ((!http && !stdio) || args.Length != 3 || args[1] != "--config")
@@ -20,6 +20,7 @@ try
     {
         var builder = Host.CreateApplicationBuilder();
         builder.Logging.ClearProviders();
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
         builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
         builder.Services.Configure<SimpleConsoleFormatterOptions>(o => o.SingleLine = true);
         builder.Services.AddSingleton(config);
@@ -31,6 +32,7 @@ try
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = AppContext.BaseDirectory });
         builder.Logging.ClearProviders();
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
         builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
         builder.Services.Configure<SimpleConsoleFormatterOptions>(o => o.SingleLine = true);
         builder.WebHost.ConfigureKestrel(o => { o.Listen(IPAddress.Loopback, config.Port); o.Limits.MaxRequestBodySize = 65536; });
@@ -51,6 +53,13 @@ try
             context.Response.Headers.CacheControl = "no-store";
             await next(context);
         });
+        // A status refresh must not create three MCP sessions or perform semantic analysis.
+        // This route shares the same loopback, token and origin checks as /mcp.
+        app.MapGet("/health", () => Results.Json(new
+        {
+            version = "0.1.2", instance_id = config.InstanceId,
+            workspace_root = engine.WorkspaceRoot, mcp_ready = true, apply_available = false
+        }));
         app.MapMcp("/mcp");
         await app.RunAsync();
     }

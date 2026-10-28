@@ -20,7 +20,7 @@ internal static class HelperLifecycleTests
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start(); var port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
         var executable = Path.Combine(Path.GetFullPath(package), "McpHelper.exe");
-        Check(HelperPackage.Verify(executable) == "0.1.1", "standalone package manifest and every file hash verified");
+        Check(HelperPackage.Verify(executable) == "0.1.2", "standalone package manifest and every file hash verified");
         var settings = new HelperSettings(workspace, executable, port, false, HelperSettings.NewToken());
         settings.Save();
         var logs = new List<string>();
@@ -31,6 +31,12 @@ internal static class HelperLifecycleTests
             await adapter.StartAsync();
             var pid = adapter.OwnedPid;
             Check(pid is not null && (await adapter.GetStatusAsync()).State == AdapterState.Running, "Hub-owned service passes actual MCP init/list/call");
+            int idleLogCount;
+            lock (logs) idleLogCount = logs.Count;
+            for (var poll = 0; poll < 30; poll++)
+                Check((await adapter.GetStatusAsync()).State == AdapterState.Running, "idle health verifies the owned service");
+            await Task.Delay(200);
+            lock (logs) Check(logs.Count - idleLogCount <= 4, "idle refreshes do not flood Hub with HTTP/MCP routine logs");
             await adapter.StartAsync();
             Check(adapter.OwnedPid == pid, "Start is idempotent for an owned instance");
             using (var observer = new HelperAdapter())

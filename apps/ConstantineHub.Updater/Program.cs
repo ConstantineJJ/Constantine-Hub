@@ -147,9 +147,17 @@ internal static class Program
             .Select(file => (Source: file, Relative: Path.GetRelativePath(source, file)))
             .Select(file => (file.Source, file.Relative, Target: Path.GetFullPath(Path.Combine(target, file.Relative))))
             .OrderBy(file => file.Relative, StringComparer.OrdinalIgnoreCase).ToArray();
-        foreach (var file in files) EnsureInside(target, file.Target);
+        foreach (var file in files)
+        {
+            EnsureInside(target, file.Target);
+            PackageRetirement.Resolve(source, file.Relative);
+            PackageRetirement.Resolve(target, file.Relative);
+            PackageRetirement.Resolve(backupRoot, file.Relative);
+        }
+        var retired = PackageRetirement.Plan(source, target, backupRoot);
         // Check the entire payload before changing even the first installation file.
-        UpdateFiles.WaitUntilWritable(files.Select(file => file.Target), timeout);
+        UpdateFiles.WaitUntilWritable(files.Select(file => file.Target).Concat(retired.Select(file => file.Target)), timeout);
+        foreach (var file in retired) PackageRetirement.Retire(file, replaced, timeout);
         foreach (var file in files)
         {
             var existed = File.Exists(file.Target);

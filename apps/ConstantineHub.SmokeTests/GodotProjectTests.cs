@@ -45,6 +45,39 @@ internal static class GodotProjectTests
         reply.GetAwaiter().GetResult();
         Check(!wrong.Connected && wrong.Message.Contains("another project", StringComparison.OrdinalIgnoreCase), "open port belonging to another Godot project is not shown connected");
         TestSelection(before, first, fixture);
+        TestLegacyPluginMigration(before, fixture);
+    }
+
+    private static void TestLegacyPluginMigration(GodotSettings settings, string fixture)
+    {
+        const string legacyPath = "res://addons/godot_mcp/plugin.cfg";
+        const string hubPath = "res://addons/constantine_mcp/plugin.cfg";
+        const string otherPath = "res://addons/unrelated/plugin.cfg";
+        const string legacyAutoload = "GodotMCPRuntime=\"*res://addons/godot_mcp/runtime_bridge.gd\"";
+        var project = Path.Combine(fixture, "legacy-migration");
+        var legacy = Path.Combine(project, "addons", "godot_mcp");
+        Directory.CreateDirectory(legacy);
+        var config = Path.Combine(project, "project.godot");
+        var original = "[application]\nconfig/name=\"Legacy migration\"\n[autoload]\n" + legacyAutoload +
+            "\nOtherAutoload=\"*res://other.gd\"\n[editor_plugins]\nenabled=PackedStringArray(\"" +
+            legacyPath + "\", \"" + otherPath + "\", \"" + hubPath + "\")\n";
+        File.WriteAllText(config, original);
+        File.WriteAllText(Path.Combine(legacy, "plugin.cfg"), "[plugin]\nname=\"Godot MCP for ChatGPT\"\nscript=\"plugin.gd\"\n");
+        var oldScript = "@tool\nextends EditorPlugin\nconst EDITOR_PORT := 6262\n";
+        File.WriteAllText(Path.Combine(legacy, "plugin.gd"), oldScript);
+        GodotPluginInstaller.InstallOrUpdate(settings with { ProjectRoot = project });
+        var migrated = File.ReadAllText(config);
+        Check(!migrated.Contains(legacyPath) && !migrated.Contains(legacyAutoload) && migrated.Contains(hubPath) &&
+            migrated.Contains(otherPath) && migrated.Contains("OtherAutoload=\"*res://other.gd\""),
+            "known conflicting legacy editor and runtime bridge are disabled even when Hub plugin is already enabled");
+        Check(File.ReadAllText(config + ".constantine-before-plugin.bak") == original && File.ReadAllText(Path.Combine(legacy, "plugin.gd")) == oldScript,
+            "legacy migration backs up project configuration and preserves old addon files");
+        GodotPluginInstaller.InstallOrUpdate(settings with { ProjectRoot = project });
+        Check(File.ReadAllText(config) == migrated, "legacy bridge migration is idempotent");
+        File.WriteAllText(config, original);
+        File.WriteAllText(Path.Combine(legacy, "plugin.cfg"), "[plugin]\nname=\"Unrelated plugin\"\nscript=\"plugin.gd\"\n");
+        GodotPluginInstaller.InstallOrUpdate(settings with { ProjectRoot = project });
+        Check(File.ReadAllText(config) == original, "unrecognized addon at legacy path and its autoload are left unchanged");
     }
 
     private static void TestSelection(GodotSettings before, string first, string fixture)

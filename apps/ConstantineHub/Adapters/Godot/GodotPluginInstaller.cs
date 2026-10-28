@@ -13,6 +13,8 @@ internal sealed record GodotPluginStatus(
 internal static class GodotPluginInstaller
 {
     private const string PluginPath = "res://addons/constantine_mcp/plugin.cfg";
+    private const string LegacyPluginPath = "res://addons/godot_mcp/plugin.cfg";
+    private const string LegacyAutoloadPattern = @"(?m)^[ \t]*GodotMCPRuntime[ \t]*=[ \t]*""\*res://addons/godot_mcp/runtime_bridge\.gd""[ \t]*(?:\r?\n|$)";
 
     internal static GodotPluginStatus Inspect(GodotSettings settings)
     {
@@ -63,11 +65,33 @@ internal static class GodotPluginInstaller
         }
     }
 
-    private static bool IsEnabled(string projectText)
+    private static bool IsEnabled(string projectText, string pluginPath = PluginPath)
     {
         var section = Regex.Match(projectText,
             @"(?ms)^\[editor_plugins\]\s*(?<body>.*?)(?=^\[|\z)");
-        return section.Success && section.Groups["body"].Value.Contains(PluginPath, StringComparison.Ordinal);
+        return section.Success && section.Groups["body"].Value.Contains(pluginPath, StringComparison.Ordinal);
+    }
+
+    // Only the identified predecessor uses the same ports with an incompatible
+    // command protocol. A different addon at this path must remain untouched.
+    private static bool IsKnownLegacyPlugin(string projectDirectory)
+    {
+        var directory = Path.Combine(projectDirectory, "addons", "godot_mcp");
+        var config = Path.Combine(directory, "plugin.cfg");
+        var script = Path.Combine(directory, "plugin.gd");
+        if (!File.Exists(config) || !File.Exists(script)) return false;
+        var text = File.ReadAllText(config, Encoding.UTF8);
+        return Regex.IsMatch(text, @"(?m)^[ \t]*name[ \t]*=[ \t]*""Godot MCP for ChatGPT""[ \t]*\r?$") &&
+               Regex.IsMatch(text, @"(?m)^[ \t]*script[ \t]*=[ \t]*""plugin\.gd""[ \t]*\r?$") &&
+               Regex.IsMatch(File.ReadAllText(script, Encoding.UTF8), @"(?m)^[ \t]*const[ \t]+EDITOR_PORT[ \t]*:?=[ \t]*6262[ \t]*\r?$");
+    }
+
+    private static string RemoveLegacyAutoload(string text)
+    {
+        var section = Regex.Match(text, @"(?ms)^\[autoload\]\s*(?<body>.*?)(?=^\[|\z)");
+        if (!section.Success) return text;
+        var body = section.Groups["body"];
+        return text.Remove(body.Index, body.Length).Insert(body.Index, Regex.Replace(body.Value, LegacyAutoloadPattern, ""));
     }
 
     private static void EnablePlugin(string projectFile)
@@ -76,12 +100,16 @@ internal static class GodotPluginInstaller
             throw new FileNotFoundException("project.godot was not found.", projectFile);
 
         var text = File.ReadAllText(projectFile, Encoding.UTF8);
-        if (IsEnabled(text))
+        var migrateLegacy = IsKnownLegacyPlugin(Path.GetDirectoryName(projectFile)!);
+        var withoutLegacyAutoload = migrateLegacy ? RemoveLegacyAutoload(text) : text;
+        if (IsEnabled(text) && (!migrateLegacy || !IsEnabled(text, LegacyPluginPath)) && withoutLegacyAutoload == text)
             return;
 
         var backup = projectFile + ".constantine-before-plugin.bak";
         if (!File.Exists(backup))
             File.Copy(projectFile, backup);
+
+        text = withoutLegacyAutoload;
 
         var section = Regex.Match(text,
             @"(?ms)^\[editor_plugins\]\s*(?<body>.*?)(?=^\[|\z)");
@@ -103,6 +131,7 @@ internal static class GodotPluginInstaller
                     .Cast<Match>()
                     .Select(match => match.Groups["path"].Value)
                     .ToList();
+                if (migrateLegacy) paths.RemoveAll(path => path == LegacyPluginPath);
                 if (!paths.Contains(PluginPath, StringComparer.Ordinal))
                     paths.Add(PluginPath);
                 var replacement = "enabled=PackedStringArray(" +

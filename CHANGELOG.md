@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.2 — 2026-10-29
+
+### Fixed
+- Notify when Allowlist folders become unavailable, with actions to remove their entries, open settings, or defer the notification.
+- Keep unavailable folders editable; select a new location without changing their read/write/delete permissions.
+- Allow removal of every unavailable entry without granting implicit access. Local Files remains stopped until an accessible folder is allowed.
+- Recheck folder availability before cleanup, preserve other configuration fields, and keep one previous-config backup.
+
 ## 0.4.1 — 2026-10-29
 
 ### Fixed

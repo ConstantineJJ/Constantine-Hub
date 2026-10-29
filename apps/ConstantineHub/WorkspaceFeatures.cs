@@ -89,6 +89,7 @@ internal sealed partial class MainForm
         };
         _logTimer.Start();
         FormClosed += (_, _) => { _logTimer.Stop(); _logTimer.Dispose(); };
+        AttachAllowlistRecovery();
     }
 
     private void ReloadProjects(string? selectedRoot = null)
@@ -139,7 +140,15 @@ internal sealed partial class MainForm
     {
         if (!changed) return;
         var status = await _localFiles.GetStatusAsync();
-        if (status.State == AdapterState.Running) await _localFiles.RestartAsync();
+        if (status.State == AdapterState.Running)
+        {
+            if (_localFiles.SettingsSummary.ConfigValid) await _localFiles.RestartAsync();
+            else
+            {
+                await _localFiles.StopAsync();
+                Log("Local Files stopped. Resolve unavailable allowlist folders or add an allowed folder before starting it again.");
+            }
+        }
         else if (status.State == AdapterState.External)
             Log("File access saved. Restart the external Local Files service to load the new folder.");
     }

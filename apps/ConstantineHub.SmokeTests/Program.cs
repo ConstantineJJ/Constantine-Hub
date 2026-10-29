@@ -58,6 +58,7 @@ internal static class Program
             TestCanonicalKnowledge(fixture);
             GodotProjectTests.Run(fixture);
             WorkspaceFeaturesTests.FileHandling(fixture);
+            LocalFilesRecoveryTests.Run(fixture);
             GodotStartupTests.Run(fixture);
             Console.WriteLine("Constructing UI");
             using var form = new MainForm(enableTray: false);

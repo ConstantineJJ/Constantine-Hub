@@ -444,6 +444,7 @@ internal sealed partial class MainForm : Form
             UpdateTunnelActions(_localFiles.Id, local.State);
 
             var summary = _localFiles.SettingsSummary;
+            RefreshAllowlistNotification();
             SetStatus(_localRoots, summary.ConfigValid, summary.ConfigValid
                 ? $"{summary.RootCount} configured"
                 : summary.Message);
@@ -688,34 +689,12 @@ internal sealed partial class MainForm : Form
 
     private async Task OpenLocalFilesSettingsAsync()
     {
-        var before = await _localFiles.GetStatusAsync();
         using var form = new LocalFilesSettingsForm();
         if (form.ShowDialog(this) != DialogResult.OK)
             return;
 
         Log("Local Files allowlist saved.");
-        if (before.State == AdapterState.Running)
-        {
-            try
-            {
-                Log("Restarting Hub-owned Local Files tunnel to apply the new allowlist…");
-                await _localFiles.RestartAsync();
-            }
-            catch (Exception ex)
-            {
-                Log("Automatic Local Files restart FAILED: " + ex.Message);
-                MessageBox.Show(this, ex.Message, "Restart Local Files MCP", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-        }
-        else if (before.State == AdapterState.External)
-        {
-            MessageBox.Show(
-                this,
-                "Settings were saved. The current Local Files tunnel is external/adopted, so Hub will not kill it. Restart that tunnel once to load the new allowlist, or stop it and then press Start in Hub.",
-                "Restart required",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-        }
+        await RunAdapterActionAsync("Apply Local Files allowlist", _ => ApplyFileAccessAsync(true));
 
         await RefreshStatusAsync();
     }

@@ -37,14 +37,14 @@ internal static class LocalFilesSettingsStore
         }
     }
 
-    internal static IReadOnlyList<LocalFilesRootRule> LoadRules()
+    internal static IReadOnlyList<LocalFilesRootRule> LoadRules(bool requireAvailable = true)
     {
         var document = LoadDocument();
         if (document["schema_version"]?.GetValue<int>() != 1)
             throw new InvalidDataException("Local Files MCP schema_version must be 1.");
 
-        if (document["allowed_roots"] is not JsonArray array || array.Count == 0)
-            throw new InvalidDataException("Local Files MCP allowed_roots must be a non-empty array.");
+        if (document["allowed_roots"] is not JsonArray array)
+            throw new InvalidDataException("Local Files MCP allowed_roots must be an array.");
 
         var rules = new List<LocalFilesRootRule>();
         foreach (var item in array)
@@ -71,13 +71,13 @@ internal static class LocalFilesSettingsStore
                 throw new InvalidDataException($"Allowed root '{path}' has unsupported permissions: {string.Join(", ", unknown)}");
 
             rules.Add(new LocalFilesRootRule(
-                NormalizeExistingDirectory(path),
+                NormalizeConfiguredDirectory(path, requireAvailable),
                 names.Contains("read"),
                 names.Contains("write"),
                 names.Contains("delete")));
         }
 
-        ValidateRules(rules);
+        ValidateRules(rules, requireAvailable);
         return rules;
     }
 
@@ -88,13 +88,16 @@ internal static class LocalFilesSettingsStore
 
         try
         {
-            var rules = LoadRules();
+            var rules = LoadRules(requireAvailable: false);
+            var unavailable = UnavailablePaths(rules);
             return new(
                 true,
-                true,
+                rules.Count > 0 && unavailable.Count == 0,
                 rules.Count,
                 rules.Any(x => x.Write),
                 rules.Any(x => x.Delete),
+                rules.Count == 0 ? "No folders allowed. Add a folder in Allowlist." :
+                unavailable.Count > 0 ? $"Unavailable folders: {unavailable.Count}. Open Allowlist to remove or relocate them." :
                 $"{rules.Count} root(s) configured");
         }
         catch (Exception ex)
@@ -103,10 +106,10 @@ internal static class LocalFilesSettingsStore
         }
     }
 
-    internal static IReadOnlyList<string> ValidateRules(IEnumerable<LocalFilesRootRule> input)
+    internal static IReadOnlyList<string> ValidateRules(IEnumerable<LocalFilesRootRule> input, bool requireAvailable = true)
     {
         var rules = input.ToList();
-        if (rules.Count == 0)
+        if (rules.Count == 0 && requireAvailable)
             throw new InvalidDataException("At least one allowed root is required.");
 
         var normalized = new List<LocalFilesRootRule>(rules.Count);
@@ -115,7 +118,7 @@ internal static class LocalFilesSettingsStore
             if (!rule.Read && !rule.Write && !rule.Delete)
                 throw new InvalidDataException($"Allowed root '{rule.Path}' must grant at least one permission.");
 
-            normalized.Add(rule with { Path = NormalizeExistingDirectory(rule.Path) });
+            normalized.Add(rule with { Path = NormalizeConfiguredDirectory(rule.Path, requireAvailable) });
         }
 
         var duplicates = normalized
@@ -144,12 +147,12 @@ internal static class LocalFilesSettingsStore
         return warnings;
     }
 
-    internal static void SaveRules(IEnumerable<LocalFilesRootRule> input)
+    internal static void SaveRules(IEnumerable<LocalFilesRootRule> input, bool requireAvailable = true)
     {
         var rules = input
-            .Select(rule => rule with { Path = NormalizeExistingDirectory(rule.Path) })
+            .Select(rule => rule with { Path = NormalizeConfiguredDirectory(rule.Path, requireAvailable) })
             .ToList();
-        ValidateRules(rules);
+        ValidateRules(rules, requireAvailable);
 
         var document = LoadDocument();
         if (document["schema_version"]?.GetValue<int>() != 1)
@@ -183,7 +186,25 @@ internal static class LocalFilesSettingsStore
             File.Move(temp, ConfigPath);
     }
 
-    internal static string NormalizeExistingDirectory(string rawPath)
+    internal static IReadOnlyList<string> UnavailablePaths(IEnumerable<LocalFilesRootRule> rules)
+        => rules.Where(rule => !Directory.Exists(rule.Path)).Select(rule => rule.Path).ToArray();
+
+    internal static int RemoveUnavailableRoots()
+    {
+        // Recheck on click: a temporarily disconnected drive may have returned
+        // since the notification was displayed. Never remove restored entries.
+        var rules = LoadRules(requireAvailable: false);
+        var remaining = rules.Where(rule => Directory.Exists(rule.Path)).ToArray();
+        var removed = rules.Count - remaining.Length;
+        if (removed > 0) SaveRules(remaining, requireAvailable: false);
+        return removed;
+    }
+
+    private static string NormalizeConfiguredDirectory(string path, bool requireAvailable)
+        => requireAvailable || Directory.Exists(Environment.ExpandEnvironmentVariables(path.Trim()))
+            ? NormalizeExistingDirectory(path) : NormalizeDirectoryPath(path);
+
+    private static string NormalizeDirectoryPath(string rawPath)
     {
         if (string.IsNullOrWhiteSpace(rawPath))
             throw new InvalidDataException("Folder path cannot be empty.");
@@ -192,7 +213,12 @@ internal static class LocalFilesSettingsStore
         if (!Path.IsPathFullyQualified(expanded))
             throw new InvalidDataException($"Folder path must be absolute: {rawPath}");
 
-        var full = Path.GetFullPath(expanded);
+        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(expanded));
+    }
+
+    internal static string NormalizeExistingDirectory(string rawPath)
+    {
+        var full = NormalizeDirectoryPath(rawPath);
         if (!Directory.Exists(full))
             throw new DirectoryNotFoundException($"Allowed root does not exist: {full}");
 

@@ -58,6 +58,7 @@ internal static class Program
             TestCanonicalKnowledge(fixture);
             GodotProjectTests.Run(fixture);
             WorkspaceFeaturesTests.FileHandling(fixture);
+            GodotStartupTests.Run(fixture);
             Console.WriteLine("Constructing UI");
             using var form = new MainForm(enableTray: false);
             UiPass.Apply(form);
@@ -77,7 +78,8 @@ internal static class Program
             form.Size = form.MinimumSize;
             Pump();
             Check(shortcuts.All(b => b.Right <= b.Parent!.ClientSize.Width && b.Bottom <= b.Parent.ClientSize.Height),
-                "compact canonical buttons fit the minimum window size");
+                "compact canonical buttons fit the minimum window size: " + string.Join("; ", shortcuts.Select(b =>
+                    $"{b.Text} {b.Bounds} in {b.Parent!.ClientSize}, DPI {form.DeviceDpi}, window {form.Size}")));
             form.Size = originalSize;
             Pump();
 

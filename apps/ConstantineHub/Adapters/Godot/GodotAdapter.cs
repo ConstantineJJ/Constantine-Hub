@@ -33,10 +33,13 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
     {
         _settings = GodotSettingsStore.Load();
         var plugin = GodotPluginInstaller.Inspect(_settings);
-        var editor = await GodotBridgeProbe.ProbeAsync(_settings.EditorHost, _settings.EditorPort, _settings.ProjectRoot, cancellationToken);
-        var runtime = await GodotBridgeProbe.ProbeAsync(_settings.RuntimeHost, _settings.RuntimePort, _settings.ProjectRoot, cancellationToken);
         var skills = VerifySkills(_settings);
         var tunnel = await base.GetStatusAsync(cancellationToken);
+        if (GodotSettingsStore.ProjectIssue(_settings) is { } issue)
+            return new(false, _settings.ProjectRoot, plugin, false, ExecutableLocator.FindGodot(_settings.GodotExecutable),
+                false, false, skills.Message, skills.Success, tunnel, issue, issue);
+        var editor = await GodotBridgeProbe.ProbeAsync(_settings.EditorHost, _settings.EditorPort, _settings.ProjectRoot, cancellationToken);
+        var runtime = await GodotBridgeProbe.ProbeAsync(_settings.RuntimeHost, _settings.RuntimePort, _settings.ProjectRoot, cancellationToken);
         return new(true, _settings.ProjectRoot, plugin, editor.Connected, ExecutableLocator.FindGodot(_settings.GodotExecutable), editor.Connected, runtime.Connected, skills.Message, skills.Success, tunnel,
             editor.Connected ? null : editor.Message, runtime.Connected ? null : runtime.Message);
     }
@@ -94,6 +97,9 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
         details["Runtime bridge"] = snapshot.RuntimeBridgeConnected ? $"connected {_settings.RuntimeHost}:{_settings.RuntimePort}" : "not connected";
         details["Skills"] = snapshot.SkillsSummary;
 
+        if (!snapshot.Configured && snapshot.TunnelStatus.State is AdapterState.Stopped or AdapterState.NotConfigured)
+            return new(Id, DisplayName, AdapterState.NotConfigured, snapshot.Plugin.Message, details);
+
         if (snapshot.TunnelStatus.State is AdapterState.Running or AdapterState.External)
         {
             if (!snapshot.Plugin.Installed || !snapshot.Plugin.Enabled)
@@ -137,12 +143,14 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
     internal GodotPluginStatus InstallOrUpdatePlugin()
     {
         _settings = GodotSettingsStore.Load();
+        GodotSettingsStore.Validate(_settings);
         return GodotPluginInstaller.InstallOrUpdate(_settings);
     }
 
     public override async Task<string> DoctorAsync(CancellationToken cancellationToken = default)
     {
         _settings = GodotSettingsStore.Load();
+        if (GodotSettingsStore.ProjectIssue(_settings) is { } issue) return issue;
         var lines = new List<string>();
         try
         {

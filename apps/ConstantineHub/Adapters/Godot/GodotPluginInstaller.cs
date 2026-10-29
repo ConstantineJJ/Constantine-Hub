@@ -19,6 +19,8 @@ internal static class GodotPluginInstaller
     internal static GodotPluginStatus Inspect(GodotSettings settings)
     {
         var source = GodotSettingsStore.ProjectAddonSource;
+        if (GodotSettingsStore.ProjectIssue(settings) is { } issue)
+            return new(false, false, source, string.Empty, issue);
         var target = Path.Combine(settings.ProjectRoot, "addons", "constantine_mcp");
         var installed = File.Exists(Path.Combine(target, "plugin.cfg")) &&
                         File.Exists(Path.Combine(target, "constantine_mcp_plugin.gd")) &&
@@ -38,6 +40,7 @@ internal static class GodotPluginInstaller
 
     internal static GodotPluginStatus InstallOrUpdate(GodotSettings settings)
     {
+        GodotSettingsStore.Validate(settings);
         var source = GodotSettingsStore.ProjectAddonSource;
         if (!Directory.Exists(source))
             throw new DirectoryNotFoundException("Godot project-addon source was not found: " + source);

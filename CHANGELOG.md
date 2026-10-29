@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 — 2026-10-29
+
+### Fixed
+- Hub opens when the selected Godot project has moved, is unavailable, or has not been selected yet. Add or switch projects from the sidebar.
+- Check the project before starting Godot MCP or installing its addon, without recreating missing project folders or silently selecting another project.
+- An unavailable Local Files folder no longer makes a successful Godot project switch appear to fail; its access issue is logged separately.
+
 ## 0.4.0 — 2026-10-28
 
 ### Added

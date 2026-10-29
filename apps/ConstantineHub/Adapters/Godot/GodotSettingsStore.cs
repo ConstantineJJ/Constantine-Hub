@@ -38,7 +38,7 @@ internal static class GodotSettingsStore
         var dto = ReadConfig();
 
         var settings = new GodotSettings(
-            ProjectRoot: NormalizeProject(dto.project_root ?? string.Empty),
+            ProjectRoot: NormalizeSavedProject(dto.project_root ?? string.Empty),
             TunnelProfile: string.IsNullOrWhiteSpace(dto.tunnel_profile) ? "godot-local" : dto.tunnel_profile!,
             TunnelId: string.IsNullOrWhiteSpace(dto.tunnel_id) ? DefaultTunnelId : dto.tunnel_id!,
             HealthPort: dto.health_port is > 0 and <= 65535 ? dto.health_port.Value : 8082,
@@ -49,7 +49,7 @@ internal static class GodotSettingsStore
             GodotExecutable: string.IsNullOrWhiteSpace(dto.godot_executable) ? null : Path.GetFullPath(Environment.ExpandEnvironmentVariables(dto.godot_executable!)),
             ToolsCRoot: ReadToolsCRoot(dto),
             AutoLaunchGodot: dto.auto_launch_godot ?? true);
-        Validate(settings);
+        Validate(settings, requireProject: false);
         return settings;
     }
 
@@ -61,7 +61,7 @@ internal static class GodotSettingsStore
 
     private static GodotConfigDto ReadConfig()
     {
-        EnsureDefaultExists();
+        if (!File.Exists(ConfigPath)) return new GodotConfigDto();
         var json = File.ReadAllText(ConfigPath, Encoding.UTF8);
         return JsonSerializer.Deserialize<GodotConfigDto>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
@@ -70,12 +70,12 @@ internal static class GodotSettingsStore
 
     internal static void Save(GodotSettings settings)
     {
-        Validate(settings);
+        Validate(settings, requireProject: false);
         Directory.CreateDirectory(Path.GetDirectoryName(ConfigPath)!);
         var dto = new GodotConfigDto
         {
             schema_version = 1,
-            project_root = NormalizeProject(settings.ProjectRoot),
+            project_root = NormalizeSavedProject(settings.ProjectRoot),
             tunnel_profile = settings.TunnelProfile,
             tunnel_id = settings.TunnelId,
             health_port = settings.HealthPort,
@@ -97,9 +97,9 @@ internal static class GodotSettingsStore
             File.Move(temp, ConfigPath);
     }
 
-    internal static void Validate(GodotSettings settings)
+    internal static void Validate(GodotSettings settings, bool requireProject = true)
     {
-        _ = NormalizeProject(settings.ProjectRoot);
+        if (requireProject) _ = NormalizeProject(settings.ProjectRoot);
         if (string.IsNullOrWhiteSpace(settings.TunnelProfile) || settings.TunnelProfile.Any(ch => !(char.IsLetterOrDigit(ch) || ch is '-' or '_')))
             throw new InvalidDataException("Godot tunnel profile name is invalid.");
         if (!settings.TunnelId.StartsWith("tunnel_", StringComparison.Ordinal))
@@ -129,14 +129,23 @@ internal static class GodotSettingsStore
     internal static string McpCommand => Path.Combine(RepositoryAdapterRoot, "run_godot_mcp.cmd");
     internal static string ProjectAddonSource => Path.Combine(RepositoryAdapterRoot, "project-addon", "addons", "constantine_mcp");
 
-    private static void EnsureDefaultExists()
+    internal static string? ProjectIssue(GodotSettings settings)
     {
-        if (File.Exists(ConfigPath))
-            return;
-        var fallbackProject = @"F:\My Lab\my-lab-4-exp";
-        if (!File.Exists(Path.Combine(fallbackProject, "project.godot")))
-            return;
-        Save(new GodotSettings(fallbackProject, "godot-local", DefaultTunnelId, 8082, "127.0.0.1", 6262, "127.0.0.1", 6263, null, @"E:\MyCreations\Tools_C", true));
+        if (string.IsNullOrWhiteSpace(settings.ProjectRoot))
+            return "No Godot project selected. Use Add project or Switch in the sidebar.";
+        try { _ = NormalizeProject(settings.ProjectRoot); return null; }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or ArgumentException or NotSupportedException)
+        { return $"Godot project unavailable: {settings.ProjectRoot}. Use Add project or Switch in the sidebar."; }
+    }
+
+    // Loading preferences must not require a project on disk, nor replace the
+    // user's saved selection when a drive is disconnected or a folder moved.
+    private static string NormalizeSavedProject(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return string.Empty;
+        try { return NormalizeDirectory(path, mustExist: false); }
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException)
+        { return path.Trim(); }
     }
 
     private static string NormalizeProject(string path)

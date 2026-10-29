@@ -115,13 +115,24 @@ internal sealed partial class MainForm
         _changingProject = true; _projectPicker.Enabled = false;
         await RunAdapterActionAsync("Switch Godot project", async ct =>
         {
-            await _godot.SelectProjectAsync(entry.ProjectRoot, ct);
-            var changed = FileInbox.EnsureAgentAccess(entry.ProjectRoot);
-            await ApplyFileAccessAsync(changed);
-            Log("Active Godot project: " + entry.ProjectRoot);
+            await SelectGodotProjectAsync(entry.ProjectRoot, ct);
         });
         _projectPicker.Enabled = true; _changingProject = false; ReloadProjects();
         await RefreshStatusAsync();
+    }
+
+    internal async Task SelectGodotProjectAsync(string projectRoot, CancellationToken cancellationToken = default)
+    {
+        await _godot.SelectProjectAsync(projectRoot, cancellationToken);
+        Log("Active Godot project: " + projectRoot);
+        try
+        {
+            await ApplyFileAccessAsync(FileInbox.EnsureAgentAccess(projectRoot));
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Log("Project switched. Local Files access needs attention: " + ex.Message);
+        }
     }
 
     private async Task ApplyFileAccessAsync(bool changed)
@@ -155,7 +166,9 @@ internal sealed partial class MainForm
     {
         SetBridgeRow("local-files", local.State, local.Summary);
         SetBridgeRow("blender", blender.TunnelStatus.State, blender.BridgeConnected ? "bridge online" : "bridge offline");
-        SetBridgeRow("godot", godot.TunnelStatus.State, $"editor {(godot.EditorBridgeConnected ? "online" : "offline")} / runtime {(godot.RuntimeBridgeConnected ? "online" : "idle")}");
+        SetBridgeRow("godot", godot.TunnelStatus.State, godot.Configured
+            ? $"editor {(godot.EditorBridgeConnected ? "online" : "offline")} / runtime {(godot.RuntimeBridgeConnected ? "online" : "idle")}"
+            : godot.Plugin.Message);
         if (!godot.EditorBridgeConnected && _bridgeRows.TryGetValue("godot", out var godotRow))
         {
             godotRow.Status.ForeColor = Warn;

@@ -40,7 +40,9 @@ internal static class GodotProjectRegistry
     }
 
     internal static bool SameProject(string left, string right)
-        => string.Equals(NormalizePath(left), NormalizePath(right), StringComparison.OrdinalIgnoreCase);
+        => string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right)
+            ? string.IsNullOrWhiteSpace(left) && string.IsNullOrWhiteSpace(right)
+            : string.Equals(NormalizePath(left), NormalizePath(right), StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizePath(string path)
     {

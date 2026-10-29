@@ -467,7 +467,7 @@ internal sealed partial class MainForm : Form
                     : blender.Skills.Message);
 
             var godot = await _godot.GetSnapshotAsync();
-            SetStatus(_godotProject, godot.Configured, godot.ProjectRoot);
+            SetStatus(_godotProject, godot.Configured, godot.Configured ? godot.ProjectRoot : godot.Plugin.Message);
             SetStatus(_godotPlugin, godot.Plugin.Installed && godot.Plugin.Enabled, godot.Plugin.Message);
             SetOptionalStatus(_godotEditor, godot.EditorBridgeConnected,
                 godot.EditorBridgeConnected
@@ -486,7 +486,7 @@ internal sealed partial class MainForm : Form
                 new("Blender", blender.TunnelStatus.State, blender.BridgeConnected,
                     blender.Skills.Success ? null : blender.Skills.Message),
                 new("Godot editor", godot.TunnelStatus.State, godot.EditorBridgeConnected,
-                    !godot.Configured ? "Project not configured" :
+                    !godot.Configured ? godot.Plugin.Message :
                     !godot.Plugin.Installed || !godot.Plugin.Enabled ? godot.Plugin.Message :
                     !godot.SkillsOk ? godot.SkillsSummary : null)
             ];

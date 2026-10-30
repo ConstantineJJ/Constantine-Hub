@@ -86,6 +86,7 @@ internal sealed partial class MainForm
         {
             for (var i = 0; i < 100 && _pendingLogs.TryDequeue(out var message); i++)
             { Interlocked.Decrement(ref _pendingLogCount); Log(message); }
+            FlushLogView();
         };
         _logTimer.Start();
         FormClosed += (_, _) => { _logTimer.Stop(); _logTimer.Dispose(); };

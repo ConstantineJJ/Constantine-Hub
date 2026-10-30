@@ -32,6 +32,11 @@ internal static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args is ["--replay-logs", var firstLog, var secondLog])
+        {
+            LogReplayDiagnostics.Run([firstLog, secondLog]);
+            return 0;
+        }
         try
         {
             using var watchdog = new System.Threading.Timer(_ =>
@@ -60,6 +65,7 @@ internal static class Program
             WorkspaceFeaturesTests.FileHandling(fixture);
             LocalFilesRecoveryTests.Run(fixture);
             GodotStartupTests.Run(fixture);
+            LogViewTests.Run();
             Console.WriteLine("Constructing UI");
             using var form = new MainForm(enableTray: false);
             UiPass.Apply(form);

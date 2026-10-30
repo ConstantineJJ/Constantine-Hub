@@ -78,7 +78,12 @@ internal sealed partial class MainForm : Form
             if (WindowState != FormWindowState.Minimized)
                 _restoreWindowState = WindowState;
         };
-        VisibleChanged += (_, _) => _statusTimer.Interval = Visible ? 5000 : 15000;
+        VisibleChanged += (_, _) =>
+        {
+            _statusTimer.Interval = Visible ? 5000 : 15000;
+            FlushLogView();
+        };
+        _log.VisibleChanged += (_, _) => FlushLogView();
         FormClosing += (_, e) =>
         {
             if (!_exitRequested && e.CloseReason == CloseReason.UserClosing)
@@ -181,6 +186,7 @@ internal sealed partial class MainForm : Form
 
         _log.Dock = DockStyle.Fill;
         _log.ReadOnly = true;
+        _log.DetectUrls = false;
         _log.BackColor = Color.FromArgb(15, 17, 21);
         _log.ForeColor = Color.Gainsboro;
         _log.BorderStyle = BorderStyle.FixedSingle;
@@ -747,14 +753,8 @@ internal sealed partial class MainForm : Form
         if (_verboseButton is not null)
             _verboseButton.Text = _verboseLogs ? "Verbose: On" : "Verbose: Off";
 
-        _log.Clear();
-        foreach (var line in _allLogLines)
-        {
-            if (_verboseLogs || !IsVerboseTunnelLine(line))
-                _log.AppendText(line + Environment.NewLine);
-        }
-        _log.SelectionStart = _log.TextLength;
-        _log.ScrollToCaret();
+        _logDirty = true;
+        FlushLogView();
     }
 
     private static bool IsVerboseTunnelLine(string line)
@@ -803,18 +803,12 @@ internal sealed partial class MainForm : Form
 
         var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
         _allLogLines.Add(line);
-        if (_allLogLines.Count > 3000) _allLogLines.RemoveRange(0, 500);
-        if (_verboseLogs || !IsVerboseTunnelLine(line))
+        if (_allLogLines.Count > 3000)
         {
-            _log.AppendText(line + Environment.NewLine);
-            if (_log.TextLength > 250000)
-            {
-                _log.Select(0, 50000);
-                _log.SelectedText = string.Empty;
-            }
-            _log.SelectionStart = _log.TextLength;
-            _log.ScrollToCaret();
+            _allLogLines.RemoveRange(0, 500);
+            _logDirty = true;
         }
+        if (_verboseLogs || !IsVerboseTunnelLine(line)) _logDirty = true;
     }
 
     private void LogFromAnyThread(string message) => Log(message);

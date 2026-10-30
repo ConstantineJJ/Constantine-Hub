@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.3 — 2026-10-30
+
+### Fixed
+- Correct log trimming: deleting a protected RichEdit selection was rejected, so the native log kept growing and the failed edit was retried on every new line.
+- Render bounded plain-text log snapshots in batches instead of updating and scrolling for every incoming line.
+- Keep collecting recent diagnostics in memory while Hub is in the tray or the log panel is collapsed; refresh the view when shown again.
+- Disable automatic URL formatting in diagnostic output and apply the same display bound when toggling verbose mode.
+
 ## 0.4.2 — 2026-10-29
 
 ### Fixed

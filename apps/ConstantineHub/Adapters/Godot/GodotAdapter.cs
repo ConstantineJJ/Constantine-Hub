@@ -54,7 +54,7 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
             var candidate = previous with { ProjectRoot = Path.GetFullPath(projectRoot) };
             GodotSettingsStore.Validate(candidate);
             var current = await TunnelRuntimeProbe.ProbeAsync(ProfileName, cancellationToken);
-            if (!OwnsRunningTunnel && current.State == TunnelRuntimeState.RunningExpected)
+            if (!OwnsRunningTunnel && current.State is TunnelRuntimeState.RunningExpected or TunnelRuntimeState.McpUnavailable)
                 throw new InvalidOperationException("Stop the Godot tunnel in the launcher that owns it before switching projects. The current tunnel is managed outside Hub.");
             if (current.State == TunnelRuntimeState.Occupied)
                 throw new InvalidOperationException("The Godot tunnel health port is occupied. Stop its current owner before switching projects.");

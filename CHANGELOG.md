@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.4 — 2026-10-31
+
+### Fixed
+- Detect an exited MCP stdio child even when tunnel-client keeps `/readyz` and its cached channel probe green.
+- Show the unavailable MCP server as degraded and let Start recover its Hub-owned tunnel instead of reporting that it is already ready.
+- Preserve external tunnel ownership during recovery and project switching; Doctor uses a separate health port for degraded tunnels too.
+
 ## 0.4.3 — 2026-10-30
 
 ### Fixed

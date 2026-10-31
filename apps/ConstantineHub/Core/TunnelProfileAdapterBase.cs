@@ -52,7 +52,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
                 Id, DisplayName, AdapterState.Running, "Tunnel ready (Hub-owned).", details),
             TunnelRuntimeState.RunningExpected => new(
                 Id, DisplayName, AdapterState.External, "Tunnel ready (managed outside Hub).", details),
-            TunnelRuntimeState.Occupied => new(
+            TunnelRuntimeState.Occupied or TunnelRuntimeState.McpUnavailable => new(
                 Id, DisplayName, AdapterState.Degraded, runtime.Message, details),
             _ => new(Id, DisplayName, AdapterState.Failed, runtime.Message, details)
         };
@@ -73,6 +73,12 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
             throw new InvalidOperationException(initial.Message);
         if (initial.State == TunnelRuntimeState.Occupied)
             throw new InvalidOperationException(initial.Message);
+        if (initial.State == TunnelRuntimeState.McpUnavailable)
+        {
+            if (!_ownedTunnel.IsRunning) throw new ExternalTunnelControlException(DisplayName);
+            Log("MCP server exited or became unavailable; restarting the Hub-owned tunnel.");
+            await StopAsync(cancellationToken);
+        }
         if (_ownedTunnel.IsRunning)
         {
             Log("Owned tunnel process is already running; waiting for readiness.");
@@ -139,7 +145,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
         else
         {
             var current = await TunnelRuntimeProbe.ProbeAsync(ProfileName, cancellationToken);
-            if (current.State == TunnelRuntimeState.RunningExpected)
+            if (current.State is TunnelRuntimeState.RunningExpected or TunnelRuntimeState.McpUnavailable)
                 throw new ExternalTunnelControlException(DisplayName);
         }
 
@@ -153,7 +159,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
 
         var current = await TunnelRuntimeProbe.ProbeAsync(ProfileName, cancellationToken);
         var arguments = new List<string> { "doctor", "--profile", ProfileName, "--explain" };
-        if (current.State == TunnelRuntimeState.RunningExpected)
+        if (current.State is TunnelRuntimeState.RunningExpected or TunnelRuntimeState.McpUnavailable)
             arguments.AddRange(["--health.listen-addr", "127.0.0.1:0"]);
 
         var result = await ProcessCapture.RunAsync(executable, arguments, cancellationToken);

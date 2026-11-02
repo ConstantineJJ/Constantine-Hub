@@ -37,6 +37,7 @@ internal static class UiAcceptancePass
             PolishAdapter(form, dashboard, "LOCAL FILES MCP", "LocalFilesIcon.png", renameLocalSettings: true);
             PolishAdapter(form, dashboard, "BLENDER MCP", "BlenderIcon.png");
             PolishAdapter(form, dashboard, "GODOT MCP", "GodotIcon.png");
+            PolishAdapter(form, dashboard, "NVIDIA APP MCP", "NvidiaIcon.png");
         }
 
         form.PerformLayout();

@@ -29,16 +29,18 @@ internal static class UiPass
         var localCard = legacyRoot.GetControlFromPosition(0, 1);
         var blenderCard = legacyRoot.GetControlFromPosition(0, 2);
         var godotCard = legacyRoot.GetControlFromPosition(0, 3);
-        var globalActions = legacyRoot.GetControlFromPosition(0, 4) as FlowLayoutPanel;
-        var log = legacyRoot.GetControlFromPosition(0, 5) as RichTextBox;
+        var nvidiaCard = legacyRoot.GetControlFromPosition(0, 4);
+        var globalActions = legacyRoot.GetControlFromPosition(0, 5) as FlowLayoutPanel;
+        var log = legacyRoot.GetControlFromPosition(0, 6) as RichTextBox;
 
-        if (localCard is null || blenderCard is null || godotCard is null ||
+        if (localCard is null || blenderCard is null || godotCard is null || nvidiaCard is null ||
             globalActions is null || log is null)
             return;
 
         legacyRoot.Controls.Remove(localCard);
         legacyRoot.Controls.Remove(blenderCard);
         legacyRoot.Controls.Remove(godotCard);
+        legacyRoot.Controls.Remove(nvidiaCard);
         legacyRoot.Controls.Remove(globalActions);
         legacyRoot.Controls.Remove(log);
         form.Controls.Remove(legacyRoot);
@@ -129,13 +131,23 @@ internal static class UiPass
             Color.FromArgb(77, 156, 217),
             4,
             toolTip);
+        var nvidiaHost = BuildAdapterHost(
+            form,
+            nvidiaCard,
+            "NVIDIA APP MCP",
+            "NV",
+            Color.FromArgb(118, 199, 93),
+            2,
+            toolTip);
 
         adapterCards.Add(localHost);
         adapterCards.Add(blenderHost);
         adapterCards.Add(godotHost);
+        adapterCards.Add(nvidiaHost);
         dashboardFlow.Controls.Add(localHost.Host);
         dashboardFlow.Controls.Add(blenderHost.Host);
         dashboardFlow.Controls.Add(godotHost.Host);
+        dashboardFlow.Controls.Add(nvidiaHost.Host);
 
         var logHost = BuildLogPanel(form, log, out var setLogExpanded);
         dashboardFlow.Controls.Add(logHost);

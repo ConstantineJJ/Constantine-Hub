@@ -499,10 +499,16 @@ internal sealed partial class MainForm : Form
                 new("Godot editor", godot.TunnelStatus.State, godot.EditorBridgeConnected,
                     !godot.Configured ? "Project not configured" :
                     !godot.Plugin.Installed || !godot.Plugin.Enabled ? godot.Plugin.Message :
-                    !godot.SkillsOk ? godot.SkillsSummary : null),
-                new("NVIDIA App", nvidia.TunnelStatus.State, nvidia.StdioBridgeInstalled,
-                    nvidia.StdioBridgeInstalled ? null : "NVIDIA MCP stdio relay not installed")
+                    !godot.SkillsOk ? godot.SkillsSummary : null)
             ];
+            if (nvidia.TunnelStatus.State != AdapterState.NotConfigured)
+            {
+                _connections = [
+                    .._connections,
+                    new("NVIDIA App", nvidia.TunnelStatus.State, nvidia.StdioBridgeInstalled,
+                        nvidia.StdioBridgeInstalled ? null : "NVIDIA MCP stdio relay not installed")
+                ];
+            }
             _actionErrors.Remove("Status check");
         }
         catch (Exception ex)

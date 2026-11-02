@@ -78,7 +78,7 @@ internal static class Program
             var starts = Descendants<Button>(form).Where(b => b.Text == "Start").ToArray();
             var legacy = starts.Where(b => b.Tag is EventHandler).ToArray();
             var headers = starts.Where(b => b.Tag is null).ToArray();
-            Check(legacy.Length == 3 && headers.Length == 3, "three adapter Start actions");
+            Check(legacy.Length == 4 && headers.Length == 4, "four adapter Start actions");
             for (var i = 0; i < headers.Length; i++)
             {
                 var calls = 0;
@@ -106,18 +106,18 @@ internal static class Program
                 Check(calls == 1, action.Text + " still dispatches once");
             }
 
-            foreach (var id in new[] { "local-files", "blender", "godot" })
+            foreach (var id in new[] { "local-files", "blender", "godot", "nvidia-app" })
                 form.UpdateTunnelActions(id, AdapterState.External);
             var protectedActions = Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart").ToArray();
-            Check(protectedActions.Length == 6 && protectedActions.All(b => !b.Enabled), "external tunnels disable Stop/Restart in all adapter cards");
-            Check(Descendants<Label>(form).Count(l => l.Tag is string hint && hint == ExternalTunnelControlException.Guidance) == 3,
+            Check(protectedActions.Length == 8 && protectedActions.All(b => !b.Enabled), "external tunnels disable Stop/Restart in all adapter cards");
+            Check(Descendants<Label>(form).Count(l => l.Tag is string hint && hint == ExternalTunnelControlException.Guidance) == 4,
                 "each external tunnel has launcher/restart guidance");
             foreach (var action in protectedActions)
             {
                 action.Tag = new EventHandler((_, _) => throw new Exception("Protected control dispatched."));
                 MainForm.InvokeButtonAction(action);
             }
-            foreach (var id in new[] { "local-files", "blender", "godot" })
+            foreach (var id in new[] { "local-files", "blender", "godot", "nvidia-app" })
                 form.UpdateTunnelActions(id, AdapterState.Running);
             Check(protectedActions.All(b => b.Enabled), "Hub-owned tunnel controls re-enable after ownership changes");
             form.RunAdapterActionQuietAsync("Restart Blender MCP", _ => Task.FromException(new ExternalTunnelControlException("Blender MCP"))).GetAwaiter().GetResult();

@@ -1,6 +1,7 @@
 using ConstantineHub.Adapters.Blender;
 using ConstantineHub.Adapters.Godot;
 using ConstantineHub.Adapters.LocalFiles;
+using ConstantineHub.Adapters.Nvidia;
 using ConstantineHub.Core;
 
 namespace ConstantineHub;
@@ -10,6 +11,7 @@ internal sealed partial class MainForm : Form
     private readonly LocalFilesAdapter _localFiles = new();
     private readonly BlenderAdapter _blender = new();
     private readonly GodotAdapter _godot = new();
+    private readonly NvidiaAppAdapter _nvidia = new();
     private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 1500 };
     private readonly RichTextBox _log = new();
     private readonly NotifyIcon _trayIcon = new();
@@ -36,6 +38,9 @@ internal sealed partial class MainForm : Form
     private readonly Label _godotRuntime = new();
     private readonly Label _godotTunnel = new();
     private readonly Label _godotSkills = new();
+    private readonly Label _nvidiaServer = new();
+    private readonly Label _nvidiaBridge = new();
+    private readonly Label _nvidiaTunnel = new();
 
     private bool _refreshing;
     private bool _checkingUpdates;
@@ -65,6 +70,7 @@ internal sealed partial class MainForm : Form
         _localFiles.LogLine += LogFromAnyThread;
         _blender.LogLine += LogFromAnyThread;
         _godot.LogLine += LogFromAnyThread;
+        _nvidia.LogLine += LogFromAnyThread;
         _helper.LogLine += LogFromAnyThread;
         _statusTimer.Tick += async (_, _) => await RefreshStatusAsync();
         _statusTimer.Start();
@@ -80,7 +86,7 @@ internal sealed partial class MainForm : Form
         Shown += async (_, _) =>
         {
             Log($"Constantine Hub v{GetDisplayVersion()} started.");
-            Log("Local Files MCP, Blender MCP and Godot MCP are managed adapters.");
+            Log("Local Files, Blender, Godot and NVIDIA App MCP are managed adapters.");
             await RefreshStatusAsync();
             _ = CheckForUpdatesAsync(silentWhenCurrent: true);
         };
@@ -94,6 +100,7 @@ internal sealed partial class MainForm : Form
             _localFiles.Dispose();
             _blender.Dispose();
             _godot.Dispose();
+            _nvidia.Dispose();
             _helper.LogLine -= LogFromAnyThread;
             _helper.Dispose();
         };
@@ -105,16 +112,18 @@ internal sealed partial class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(20),
+            AutoScroll = true,
             ColumnCount = 1,
-            RowCount = 6
+            RowCount = 7
         };
         var statusRowHeight = GetStatusRowHeight();
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, GetCardRowHeight(3, statusRowHeight)));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, GetCardRowHeight(4, statusRowHeight)));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, GetCardRowHeight(6, statusRowHeight)));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, GetCardRowHeight(3, statusRowHeight)));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 54));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
         Controls.Add(root);
 
         var header = new TableLayoutPanel
@@ -149,6 +158,7 @@ internal sealed partial class MainForm : Form
         root.Controls.Add(BuildLocalFilesCard(), 0, 1);
         root.Controls.Add(BuildBlenderCard(), 0, 2);
         root.Controls.Add(BuildGodotCard(), 0, 3);
+        root.Controls.Add(BuildNvidiaCard(), 0, 4);
 
         var globalActions = new FlowLayoutPanel
         {
@@ -164,7 +174,7 @@ internal sealed partial class MainForm : Form
         _verboseButton = MakeButton("Verbose: Off", (_, _) => ToggleVerboseLogs());
         globalActions.Controls.Add(_verboseButton);
         globalActions.Controls.Add(MakeButton("Save Log", (_, _) => SaveLog()));
-        root.Controls.Add(globalActions, 0, 4);
+        root.Controls.Add(globalActions, 0, 5);
 
         _log.Dock = DockStyle.Fill;
         _log.ReadOnly = true;
@@ -173,7 +183,7 @@ internal sealed partial class MainForm : Form
         _log.BorderStyle = BorderStyle.FixedSingle;
         _log.Font = new Font("Cascadia Mono", 9.5F);
         _log.WordWrap = false;
-        root.Controls.Add(_log, 0, 5);
+        root.Controls.Add(_log, 0, 6);
     }
 
     private Control BuildLocalFilesCard()
@@ -219,6 +229,19 @@ internal sealed partial class MainForm : Form
         AddTunnelActions(actions, _godot, _godotTunnel, "Godot MCP");
         actions.Controls.Add(MakeButton("Install Plugin", (_, _) => InstallGodotPlugin()));
         actions.Controls.Add(MakeButton("Doctor", async (_, _) => await DoctorGodotAsync()));
+        return card;
+    }
+
+    private Control BuildNvidiaCard()
+    {
+        var card = BuildCard("NVIDIA APP MCP", 3, out var content, out var actions);
+        AddStatusRow(content, 0, "Local MCP", _nvidiaServer);
+        AddStatusRow(content, 1, "Stdio bridge", _nvidiaBridge);
+        AddStatusRow(content, 2, "Secure tunnel", _nvidiaTunnel);
+
+        actions.Controls.Add(MakeButton("Start", async (_, _) => await RunAdapterActionAsync("Start NVIDIA MCP tunnel", _nvidia.StartAsync), primary: true));
+        AddTunnelActions(actions, _nvidia, _nvidiaTunnel, "NVIDIA MCP");
+        actions.Controls.Add(MakeButton("Doctor", async (_, _) => await DoctorNvidiaAsync()));
         return card;
     }
 
@@ -462,6 +485,13 @@ internal sealed partial class MainForm : Form
             UpdateTunnelActions(_godot.Id, godot.TunnelStatus.State);
             await RefreshHelperAsync();
             SetStatus(_godotSkills, godot.SkillsOk, godot.SkillsSummary);
+            var nvidia = await _nvidia.GetSnapshotAsync();
+            SetOptionalStatus(_nvidiaServer, nvidia.HttpAvailable,
+                (nvidia.HttpAvailable ? "Listening: " : "Not listening: ") + nvidia.HttpEndpoint);
+            SetStatus(_nvidiaBridge, nvidia.StdioBridgeInstalled,
+                nvidia.StdioBridgeInstalled ? "Installed" : "Not installed");
+            SetState(_nvidiaTunnel, nvidia.TunnelStatus.State, nvidia.TunnelStatus.Summary);
+            UpdateTunnelActions(_nvidia.Id, nvidia.TunnelStatus.State);
             _connections = [
                 new("Local Files", local.State, SetupIssue: summary.ConfigValid ? null : summary.Message),
                 new("Blender", blender.TunnelStatus.State, blender.BridgeConnected,
@@ -469,7 +499,9 @@ internal sealed partial class MainForm : Form
                 new("Godot editor", godot.TunnelStatus.State, godot.EditorBridgeConnected,
                     !godot.Configured ? "Project not configured" :
                     !godot.Plugin.Installed || !godot.Plugin.Enabled ? godot.Plugin.Message :
-                    !godot.SkillsOk ? godot.SkillsSummary : null)
+                    !godot.SkillsOk ? godot.SkillsSummary : null),
+                new("NVIDIA App", nvidia.TunnelStatus.State, nvidia.StdioBridgeInstalled,
+                    nvidia.StdioBridgeInstalled ? null : "NVIDIA MCP stdio relay not installed")
             ];
             _actionErrors.Remove("Status check");
         }
@@ -490,6 +522,8 @@ internal sealed partial class MainForm : Form
         await RunAdapterActionQuietAsync("Start Local Files", _localFiles.StartAsync);
         await RunAdapterActionQuietAsync("Start Blender MCP", _blender.StartAsync);
         await RunAdapterActionQuietAsync("Start Godot MCP", _godot.StartAsync);
+        if ((await _nvidia.GetStatusAsync()).State != AdapterState.NotConfigured)
+            await RunAdapterActionQuietAsync("Start NVIDIA MCP tunnel", _nvidia.StartAsync);
         if (HelperInGlobalActions()) await RunAdapterActionQuietAsync("Start MCP Helper", _helper.StartAsync);
         await RefreshStatusAsync();
     }
@@ -498,6 +532,7 @@ internal sealed partial class MainForm : Form
     {
         Log("Stop Hub-Owned requested. External/adopted tunnels will be left untouched.");
         if (HelperInGlobalActions()) await RunAdapterActionQuietAsync("Stop MCP Helper", _helper.StopAsync);
+        await RunAdapterActionQuietAsync("Stop NVIDIA MCP tunnel", _nvidia.StopAsync);
         await RunAdapterActionQuietAsync("Stop Godot MCP", _godot.StopAsync);
         await RunAdapterActionQuietAsync("Stop Blender MCP", _blender.StopAsync);
         await RunAdapterActionQuietAsync("Stop Local Files", _localFiles.StopAsync);
@@ -606,6 +641,24 @@ internal sealed partial class MainForm : Form
         {
             Log("Blender Doctor FAILED: " + ex.Message);
             MessageBox.Show(this, ex.Message, "Blender Doctor", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            await RefreshStatusAsync();
+        }
+    }
+
+    private async Task DoctorNvidiaAsync()
+    {
+        try
+        {
+            Log("NVIDIA MCP Doctor requested.");
+            Log(await _nvidia.DoctorAsync());
+        }
+        catch (Exception ex)
+        {
+            Log("NVIDIA MCP Doctor FAILED: " + ex.Message);
+            MessageBox.Show(this, ex.Message, "NVIDIA MCP Doctor", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {

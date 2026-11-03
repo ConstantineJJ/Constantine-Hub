@@ -28,7 +28,7 @@ def _default_tools_c_root() -> Path | None:
 
 def load_settings() -> GodotSettings:
     if not CONFIG_PATH.exists():
-        raise RuntimeError(f"Godot MCP config does not exist: {CONFIG_PATH}. Configure a project in Constantine Hub first.")
+        raise RuntimeError(f"Godot MCP config does not exist: {CONFIG_PATH}. Configure a project in ConHub. first.")
     data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     root = Path(data.get("project_root", "")).expanduser().resolve()
     if not root.exists() or not (root / "project.godot").exists():

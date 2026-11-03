@@ -4,6 +4,8 @@ extends Node
 const PORT := 6262
 const HOST := "127.0.0.1"
 const Codec = preload("res://addons/constantine_mcp/variant_codec.gd")
+const Pager = preload("res://addons/constantine_mcp/scene_tree_pager.gd")
+const Transport = preload("res://addons/constantine_mcp/bridge_transport.gd")
 
 var _server := TCPServer.new()
 var _clients: Array[Dictionary] = []
@@ -26,29 +28,7 @@ func _exit_tree() -> void:
 	_server.stop()
 
 func _process(_delta: float) -> void:
-	while _server.is_connection_available():
-		var peer := _server.take_connection()
-		_clients.append({"peer": peer, "buffer": ""})
-	for i in range(_clients.size() - 1, -1, -1):
-		var entry := _clients[i]
-		var peer: StreamPeerTCP = entry.peer
-		peer.poll()
-		if peer.get_status() == StreamPeerTCP.STATUS_ERROR or peer.get_status() == StreamPeerTCP.STATUS_NONE:
-			_clients.remove_at(i)
-			continue
-		var available := peer.get_available_bytes()
-		if available > 0:
-			var packet := peer.get_data(available)
-			if packet[0] == OK:
-				entry.buffer += packet[1].get_string_from_utf8()
-				_clients[i] = entry
-		var newline := str(entry.buffer).find("\n")
-		if newline >= 0:
-			var line := str(entry.buffer).substr(0, newline)
-			var response := _handle_line(line)
-			peer.put_data((JSON.stringify(response) + "\n").to_utf8_buffer())
-			peer.disconnect_from_host()
-			_clients.remove_at(i)
+	Transport.poll(_server, _clients, _handle_line)
 
 func _handle_line(line: String) -> Dictionary:
 	var parsed = JSON.parse_string(line)
@@ -69,7 +49,7 @@ func _handle_line(line: String) -> Dictionary:
 func _dispatch(op: String, params: Dictionary):
 	match op:
 		"status": return _status()
-		"scene_tree": return _scene_tree(int(params.get("max_depth", 8)), bool(params.get("include_internal", false)))
+		"scene_tree": return _scene_tree(params)
 		"inspect_node": return _inspect_node(str(params.get("node_path", "")), params.get("property_filter"))
 		"create_node": return _create_node(params)
 		"set_property": return _set_property(params)
@@ -112,30 +92,34 @@ func _status() -> Dictionary:
 		"bridge": "%s:%d" % [HOST, PORT]
 	}
 
-func _scene_tree(max_depth: int, include_internal: bool) -> Dictionary:
-	var root := _root()
-	if root == null: return _error("No edited scene is open")
-	return {"root": _node_tree_entry(root, 0, clampi(max_depth, 0, 32), include_internal)}
-
-func _node_tree_entry(node: Node, depth: int, max_depth: int, include_internal: bool) -> Dictionary:
-	var item := {"name": node.name, "class": node.get_class(), "path": str(node.get_path()), "children": []}
-	if depth >= max_depth: return item
-	for child in node.get_children(include_internal): item.children.append(_node_tree_entry(child, depth + 1, max_depth, include_internal))
-	return item
+func _scene_tree(params: Dictionary) -> Dictionary:
+	var root := _resolve_node(str(params.get("node_path", "")))
+	if root == null: return _error("Scene/subtree not found")
+	return Pager.build(root, params)
 
 func _inspect_node(path: String, property_filter) -> Dictionary:
 	var node := _resolve_node(path)
 	if node == null: return _error("Node not found: %s" % path)
 	var filter := str(property_filter if property_filter != null else "").to_lower()
 	var props := {}
+	var value_bytes := 0
+	var truncated := false
 	for info in node.get_property_list():
 		var usage := int(info.get("usage", 0))
 		if (usage & PROPERTY_USAGE_EDITOR) == 0 and (usage & PROPERTY_USAGE_STORAGE) == 0: continue
 		var name := str(info.get("name", ""))
 		if not filter.is_empty() and name.to_lower().find(filter) < 0: continue
-		props[name] = Codec.encode(node.get(name))
+		if props.size() >= 128:
+			truncated = true
+			break
+		var encoded = Codec.encode(node.get(name))
+		value_bytes += JSON.stringify(encoded).to_utf8_buffer().size() + name.to_utf8_buffer().size() * 6 + 16
+		if value_bytes > 196608:
+			truncated = true
+			break
+		props[name] = encoded
 	var script = node.get_script()
-	return {"name": node.name, "class": node.get_class(), "path": str(node.get_path()), "groups": node.get_groups(), "script": script.resource_path if script is Resource else "", "properties": props}
+	return {"name": node.name, "class": node.get_class(), "path": str(node.get_path()), "groups": node.get_groups(), "script": script.resource_path if script is Resource else "", "properties": props, "truncated": truncated, "continuation": "Use property_filter to inspect omitted properties." if truncated else ""}
 
 func _create_node(params: Dictionary) -> Dictionary:
 	var parent := _resolve_node(str(params.get("parent_path", "")))

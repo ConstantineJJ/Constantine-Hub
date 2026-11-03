@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "constantine-godot-mcp"
 version = "0.1.0"
-description = "Godot editor/runtime MCP bridge managed by Constantine Hub"
+description = "Godot editor/runtime MCP bridge managed by ConHub."
 requires-python = ">=3.11"
 dependencies = ["mcp>=2.2.0"]
 

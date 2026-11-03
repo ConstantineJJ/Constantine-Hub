@@ -19,4 +19,4 @@ func _exit_tree() -> void:
 	if is_instance_valid(_bridge):
 		_bridge.queue_free()
 	# Keep the runtime autoload registered across normal editor/plugin teardown.
-	# Constantine Hub owns installation/removal; editor shutdown must not mutate project settings.
+	# ConHub. owns installation/removal; editor shutdown must not mutate project settings.

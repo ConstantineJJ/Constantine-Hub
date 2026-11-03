@@ -33,23 +33,48 @@ static func decode(value):
 		return dict_out
 	return value
 
+# Bound nested/cyclic values before materializing a transport response.
 static func encode(value):
-	if value == null or value is bool or value is int or value is float or value is String: return value
+	return _encode(value, 0, {"remaining": 131072, "items": 2048})
+
+static func _encode(value, depth: int, budget: Dictionary):
+	if depth > 8 or budget.remaining <= 0 or budget.items <= 0:
+		return {"truncated": true, "reason": "value budget", "hint": "Use a property filter or inspect a smaller value."}
+	budget.remaining -= 64
+	budget.items -= 1
+	if value == null or value is bool or value is int or value is float: return value
+	if value is String or value is StringName or value is NodePath:
+		var text := str(value)
+		var limit := mini(8192, maxi(0, int(budget.remaining) / 6))
+		var prefix := text.left(limit)
+		budget.remaining -= prefix.to_utf8_buffer().size() * 6
+		if prefix.length() < text.length():
+			return {"truncated": true, "type": "String", "length": text.length(), "preview": prefix}
+		return text
 	if value is Vector2: return {"type": "Vector2", "x": value.x, "y": value.y}
 	if value is Vector3: return {"type": "Vector3", "x": value.x, "y": value.y, "z": value.z}
 	if value is Vector4: return {"type": "Vector4", "x": value.x, "y": value.y, "z": value.z, "w": value.w}
 	if value is Color: return {"type": "Color", "r": value.r, "g": value.g, "b": value.b, "a": value.a}
 	if value is Quaternion: return {"type": "Quaternion", "x": value.x, "y": value.y, "z": value.z, "w": value.w}
 	if value is Transform3D:
-		return {"type": "Transform3D", "origin": encode(value.origin), "basis": [encode(value.basis.x), encode(value.basis.y), encode(value.basis.z)]}
-	if value is Array:
+		return {"type": "Transform3D", "origin": _encode(value.origin, depth + 1, budget), "basis": [_encode(value.basis.x, depth + 1, budget), _encode(value.basis.y, depth + 1, budget), _encode(value.basis.z, depth + 1, budget)]}
+	if value is Array or value is PackedByteArray or value is PackedInt32Array or value is PackedInt64Array or value is PackedFloat32Array or value is PackedFloat64Array or value is PackedStringArray or value is PackedVector2Array or value is PackedVector3Array or value is PackedColorArray:
 		var arr := []
-		for item in value: arr.append(encode(item))
+		for item in value:
+			if arr.size() >= 256 or budget.remaining <= 0 or budget.items <= 0: break
+			arr.append(_encode(item, depth + 1, budget))
+		if arr.size() < value.size(): return {"truncated": true, "type": "Array", "size": value.size(), "items": arr}
 		return arr
 	if value is Dictionary:
 		var dict_out := {}
-		for key in value.keys(): dict_out[str(key)] = encode(value[key])
+		for key in value:
+			if dict_out.size() >= 256 or budget.remaining <= 0 or budget.items <= 0:
+				dict_out["_conhub_truncated"] = true
+				break
+			var name := str(key).left(256)
+			budget.remaining -= name.to_utf8_buffer().size() * 6
+			dict_out[name] = _encode(value[key], depth + 1, budget)
 		return dict_out
-	if value is Resource: return {"type": "Resource", "class": value.get_class(), "path": value.resource_path}
+	if value is Resource: return {"type": "Resource", "class": value.get_class(), "path": str(value.resource_path).left(8192)}
 	if value is Object: return {"type": "Object", "class": value.get_class(), "instance_id": value.get_instance_id()}
-	return str(value)
+	return _encode(str(value), depth + 1, budget)

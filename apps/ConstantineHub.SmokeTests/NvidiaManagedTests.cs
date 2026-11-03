@@ -13,11 +13,15 @@ internal static class NvidiaManagedTests
         using var adapter = new NvidiaAppAdapter();
         Check((await adapter.GetStatusAsync()).State == AdapterState.Stopped,
             "NVIDIA fixture starts with no existing tunnel to adopt or replace");
+        Check(JensenAnimationControl.ConnectionState(await adapter.GetSnapshotAsync()) == JensenConnectionState.Disconnected,
+            "Animation stays disconnected when only the actual local MCP is available");
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         await adapter.StartAsync(deadline.Token);
         var started = await adapter.GetSnapshotAsync(deadline.Token);
         Check(started.HttpAvailable && started.ToolCount > 0 && started.TunnelStatus.State == AdapterState.Running,
             "ConHub-owned NVIDIA tunnel and actual local MCP both reach ready state");
+        Check(JensenAnimationControl.ConnectionState(started) == JensenConnectionState.Connected,
+            "Animation follows the real ready local MCP and tunnel snapshot");
         var tunnelClient = ExecutableLocator.FindTunnelClient() ?? throw new Exception("Missing tunnel-client");
         var health = await ProcessCapture.RunAsync(tunnelClient,
             ["health", "--port", profile.HealthPort.ToString(), "--json"], deadline.Token);
@@ -47,6 +51,8 @@ internal static class NvidiaManagedTests
             "owned NVIDIA Stop releases its loopback listener");
         Check((await adapter.GetSnapshotAsync(deadline.Token)).HttpAvailable,
             "NVIDIA App's external local service remains available after tunnel Stop");
+        Check(JensenAnimationControl.ConnectionState(await adapter.GetSnapshotAsync(deadline.Token)) == JensenConnectionState.Disconnected,
+            "Animation follows the real tunnel disconnect while the local MCP stays available");
     }
 
     private static void Check(bool ok, string description)

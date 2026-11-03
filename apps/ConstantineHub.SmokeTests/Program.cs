@@ -28,10 +28,21 @@ internal static class Program
             ReleaseUpgradeTests.Run(previous, candidate).GetAwaiter().GetResult();
             return 0;
         }
+        if (args is ["--update-discovery", var previousAssembly, var expectedTag])
+        {
+            UpdateDiscoveryTests.Run(previousAssembly, expectedTag).GetAwaiter().GetResult();
+            return 0;
+        }
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args is ["--jensen-animation"])
+        {
+            JensenAnimationTests.Run();
+            JensenAnimationTests.Rendering();
+            return 0;
+        }
         if (args is ["--nvidia-live"])
         {
             NvidiaUiTests.Live().GetAwaiter().GetResult();
@@ -56,6 +67,7 @@ internal static class Program
             }, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan);
             TestConnections();
             ReconnectTests.Run();
+            JensenAnimationTests.Run();
             GodotRecoveryTests.Run();
             TrayIdentityTests.Run();
             TestUpdater();
@@ -87,6 +99,7 @@ internal static class Program
             form.Show();
             Pump();
             NvidiaUiTests.Run(form);
+            JensenAnimationTests.Rendering();
             GodotRecoveryTests.Ui(form);
             WorkspaceFeaturesTests.WindowBehavior(form);
             WorkspaceFeaturesTests.PreviewExit();

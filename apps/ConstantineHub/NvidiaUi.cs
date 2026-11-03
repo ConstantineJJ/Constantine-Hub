@@ -12,6 +12,8 @@ internal sealed partial class MainForm
     private Button? _nvidiaStop;
     private Button? _nvidiaRestart;
     private NvidiaAppSnapshot? _latestNvidia;
+    private JensenAnimationControl? _nvidiaArt;
+    private int _nvidiaConnectionOperations;
 
     internal void AttachV054Features()
     {
@@ -95,12 +97,8 @@ internal sealed partial class MainForm
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 60));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 40));
-        var image = new PictureBox { Name = "NvidiaJensenArt", Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, Margin = Padding.Empty };
-        var path = Path.Combine(AppContext.BaseDirectory, "Jensen with rays.png");
-        if (!File.Exists(path)) path = Path.Combine(AppContext.BaseDirectory, "Assets", "Jensen with rays.png");
-        if (File.Exists(path)) { using var source = Image.FromFile(path); image.Image = new Bitmap(source); }
-        image.Disposed += (_, _) => image.Image?.Dispose();
-        layout.Controls.Add(image, 0, 0);
+        _nvidiaArt = new JensenAnimationControl { Dock = DockStyle.Fill, Margin = Padding.Empty, BackColor = card.BackColor };
+        layout.Controls.Add(_nvidiaArt, 0, 0);
         var details = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Margin = Padding.Empty };
         foreach (var height in new[] { 20, 19, 19, 32 }) details.RowStyles.Add(new RowStyle(SizeType.Absolute, S(height)));
         details.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -110,9 +108,9 @@ internal sealed partial class MainForm
         _nvidiaLocal.Text = "Checking local MCP…"; _nvidiaTunnel.Text = "Checking tunnel…";
         details.Controls.Add(_nvidiaLocal, 0, 1); details.Controls.Add(_nvidiaTunnel, 0, 2);
         var actions = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
-        var start = MakeButton("Start", async (_, _) => await RunAdapterActionAsync("Start NVIDIA App MCP", _nvidia.StartAsync));
+        var start = MakeButton("Start", async (_, _) => await RunAdapterActionAsync("Start NVIDIA App MCP", ct => ConnectNvidiaAsync(false, ct)));
         _nvidiaStop = MakeButton("Stop", async (_, _) => await RunAdapterActionAsync("Stop NVIDIA App MCP", _nvidia.StopAsync));
-        _nvidiaRestart = MakeButton("↻", async (_, _) => await RunAdapterActionAsync("Restart NVIDIA App MCP", _nvidia.RestartAsync));
+        _nvidiaRestart = MakeButton("↻", async (_, _) => await RunAdapterActionAsync("Restart NVIDIA App MCP", ct => ConnectNvidiaAsync(true, ct)));
         _nvidiaRestart.AccessibleName = "Restart NVIDIA App MCP";
         var doctor = MakeButton("Doctor", async (_, _) => await RunAdapterActionAsync("NVIDIA App MCP Doctor", async ct => Log(await _nvidia.DoctorAsync(ct))));
         foreach (var button in new[] { start, _nvidiaStop, _nvidiaRestart, doctor })
@@ -131,6 +129,9 @@ internal sealed partial class MainForm
     private async Task RefreshNvidiaAsync(CancellationToken cancellationToken = default)
     {
         _latestNvidia = await _nvidia.GetSnapshotAsync(cancellationToken);
+        if (IsDisposed || Disposing) return;
+        if (_nvidiaConnectionOperations > 0) _nvidiaArt?.SetConnectionState(JensenConnectionState.Connecting);
+        else _nvidiaArt?.SetSnapshot(_latestNvidia);
         _nvidiaLocal.Text = _latestNvidia.HttpAvailable ? $"Local MCP ready · {_latestNvidia.ToolCount} tools" : "Local MCP unavailable";
         _nvidiaLocal.ForeColor = _latestNvidia.HttpAvailable ? Good : Warn;
         _nvidiaTunnel.Text = _latestNvidia.TunnelStatus.Summary;
@@ -150,8 +151,20 @@ internal sealed partial class MainForm
     {
         var status = await _nvidia.GetStatusAsync();
         if (status.State != AdapterState.NotConfigured)
-            await RunAdapterActionQuietAsync("Start NVIDIA App MCP", _nvidia.StartAsync);
+            await RunAdapterActionQuietAsync("Start NVIDIA App MCP", ct => ConnectNvidiaAsync(false, ct));
         else Log("NVIDIA App MCP: configure the dedicated constantine-nvidia tunnel profile to enable remote access.");
+    }
+
+    private async Task ConnectNvidiaAsync(bool restart, CancellationToken cancellationToken)
+    {
+        _nvidiaConnectionOperations++;
+        _nvidiaArt?.SetConnectionState(JensenConnectionState.Connecting);
+        try
+        {
+            if (restart) await _nvidia.RestartAsync(cancellationToken);
+            else await _nvidia.StartAsync(cancellationToken);
+        }
+        finally { _nvidiaConnectionOperations--; }
     }
 }
 

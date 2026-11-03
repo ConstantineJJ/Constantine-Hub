@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.5 — 2026-11-03
+
+### Added
+- Layered, double-buffered Jensen animation in the existing NVIDIA Utility card, driven by the adapter's local MCP and tunnel states.
+- Fixed normalized eye anchors: left dollar rotates counterclockwise, right dollar clockwise; independent rotating/pulsing rays, connection bursts and sparkles.
+- Smooth connection/loss transitions without restarting unchanged states; suspend frame rendering while hidden, minimized or stably disconnected.
+- Build and release verification of all six supplied transparent PNGs, plus a checksum-pinned v0.5.4 upgrade/rollback fixture.
+
+### Changed
+- Replace the static legacy Jensen artwork with the six JensenAnimation assets; no legacy or installed-dist resource fallback.
+- Keep release asset names and the existing auto-update protocol compatible with v0.5.4.
+
 ## 0.5.4 — 2026-11-03
 
 ### Added

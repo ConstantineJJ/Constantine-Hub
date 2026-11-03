@@ -130,7 +130,7 @@ internal sealed class NvidiaAppAdapter : TunnelProfileAdapterBase
         {
             using var initialize = await SendAsync(endpoint, new { jsonrpc = "2.0", id = 1, method = "initialize",
                 @params = new { protocolVersion = "2025-03-26", capabilities = new { },
-                    clientInfo = new { name = "ConHub.", version = "0.5.4" } } }, null, token);
+                    clientInfo = new { name = "ConHub.", version = typeof(NvidiaAppAdapter).Assembly.GetName().Version?.ToString(3) } } }, null, token);
             if (initialize.Headers.TryGetValues("Mcp-Session-Id", out var values)) session = values.FirstOrDefault();
             using var init = await ReadReplyAsync(initialize, token, expectedId: 1);
             if (!init.RootElement.TryGetProperty("result", out var result) ||

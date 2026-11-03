@@ -133,8 +133,9 @@ internal static class NvidiaUiTests
         Check(Descendants<ComboBox>(top).Any(p => p.Name == "GodotProjectPicker"), "Real Godot project selector moved to top bar");
         Check(Descendants<Panel>(nav).Count(p => p.Name == "NvidiaUtilityCard") == 1 &&
             !Descendants<Panel>(main).Any(p => p.Name == "NvidiaUtilityCard"), "NVIDIA has one Utility card in the sidebar");
-        var art = Descendants<PictureBox>(nav).Single(p => p.Name == "NvidiaJensenArt");
-        Check(art.SizeMode == PictureBoxSizeMode.Zoom, "Jensen artwork preserves its aspect ratio");
+        var art = Descendants<JensenAnimationControl>(nav).Single();
+        var head = JensenAnimationControl.HeadBounds(art.ClientSize);
+        Check(head.Width == head.Height, "Animated Jensen head preserves its aspect ratio");
         foreach (var button in Descendants<Button>(nav).Where(b => b.Name.StartsWith("nvidia-")))
         {
             var size = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
@@ -163,7 +164,7 @@ internal static class NvidiaUiTests
             Directory.CreateDirectory(evidence);
             using var bitmap = new Bitmap(form.Width, form.Height);
             form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
-            bitmap.Save(Path.Combine(evidence, $"conhub-v054-{form.Width}x{form.Height}-{state}.png"));
+            bitmap.Save(Path.Combine(evidence, $"conhub-v055-{form.Width}x{form.Height}-{state}.png"));
         }
     }
 

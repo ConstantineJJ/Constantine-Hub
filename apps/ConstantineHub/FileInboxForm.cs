@@ -14,7 +14,7 @@ internal sealed class FileInboxForm : Form
 
     internal FileInboxForm(string accessStatus = "Доступ агента через Local Files MCP.", bool agentConnected = true)
     {
-        Text = "Constantine Hub — Files / Файлы"; Icon = AppIconProvider.Current;
+        Text = "ConHub. — Files / Файлы"; Icon = AppIconProvider.Current;
         AutoScaleMode = AutoScaleMode.Dpi; Font = new Font("Segoe UI", 10F);
         StartPosition = FormStartPosition.CenterParent; Size = new Size(860, 560); MinimumSize = new Size(600, 380);
         BackColor = Color.FromArgb(18, 26, 34); ForeColor = Color.Gainsboro;

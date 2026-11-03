@@ -32,6 +32,11 @@ internal static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args is ["--nvidia-live"])
+        {
+            NvidiaUiTests.Live().GetAwaiter().GetResult();
+            return 0;
+        }
         if (args is ["--replay-logs", var firstLog, var secondLog])
         {
             LogReplayDiagnostics.Run([firstLog, secondLog]);
@@ -45,6 +50,9 @@ internal static class Program
                 Environment.Exit(1);
             }, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan);
             TestConnections();
+            ReconnectTests.Run();
+            GodotRecoveryTests.Run();
+            TrayIdentityTests.Run();
             TestUpdater();
             PackageRetirementTests.Run();
             TunnelLifecycleTests.Run();
@@ -73,6 +81,8 @@ internal static class Program
             Console.WriteLine("Showing UI");
             form.Show();
             Pump();
+            NvidiaUiTests.Run(form);
+            GodotRecoveryTests.Ui(form);
             WorkspaceFeaturesTests.WindowBehavior(form);
             WorkspaceFeaturesTests.Dashboard(form);
             WorkspaceFeaturesTests.FileWindow(form, fixture);
@@ -90,7 +100,7 @@ internal static class Program
             form.Size = originalSize;
             Pump();
 
-            var starts = Descendants<Button>(form).Where(b => b.Text == "Start").ToArray();
+            var starts = Descendants<Button>(form).Where(b => b.Text == "Start" && !b.Name.StartsWith("nvidia-")).ToArray();
             var legacy = starts.Where(b => b.Tag is EventHandler).ToArray();
             var headers = starts.Where(b => b.Tag is null).ToArray();
             Check(legacy.Length == 3 && headers.Length == 3, "three adapter Start actions");
@@ -113,7 +123,7 @@ internal static class Program
                 Pump();
             }
             HelperUiTests.Run(form);
-            foreach (var action in Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart" && !b.Name.StartsWith("rail-")))
+            foreach (var action in Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart" && !b.Name.StartsWith("rail-") && !b.Name.StartsWith("nvidia-")))
             {
                 var calls = 0;
                 action.Tag = new EventHandler((_, _) => calls++);
@@ -123,7 +133,7 @@ internal static class Program
 
             foreach (var id in new[] { "local-files", "blender", "godot" })
                 form.UpdateTunnelActions(id, AdapterState.External);
-            var protectedActions = Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart" && !b.Name.StartsWith("rail-")).ToArray();
+            var protectedActions = Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart" && !b.Name.StartsWith("rail-") && !b.Name.StartsWith("nvidia-")).ToArray();
             Check(protectedActions.Length == 6 && protectedActions.All(b => !b.Enabled), "external tunnels disable Stop/Restart in all adapter cards");
             Check(Descendants<Label>(form).Count(l => l.Tag is string hint && hint == ExternalTunnelControlException.Guidance) == 3,
                 "each external tunnel has launcher/restart guidance");

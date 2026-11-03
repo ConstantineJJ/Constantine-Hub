@@ -28,7 +28,7 @@ internal static class WorkspaceFeaturesTests
 
     internal static void Dashboard(MainForm form)
     {
-        Check(Descendants<Button>(form).Count(b => b.Name.StartsWith("rail-stop-")) == 4, "Right rail provides an independent Stop for each MCP service");
+        Check(Descendants<Button>(form).Count(b => b.Name.StartsWith("rail-stop-")) == 5, "Right rail provides an independent Stop for each MCP service including NVIDIA");
         Check(Descendants<ComboBox>(form).Any(c => c.Name == "GodotProjectPicker" && c.Items.Count > 0), "Registered Godot projects appear in selector");
         Check(Descendants<Button>(form).Any(b => b.Name == "AddGodotProject") && Descendants<Button>(form).Any(b => b.Name == "OpenFileInbox"), "Add project and file inbox are reachable");
     }

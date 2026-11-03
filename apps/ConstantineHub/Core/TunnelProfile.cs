@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using System.Text;
+using System.Text.Json;
 
 namespace ConstantineHub.Core;
 
@@ -56,9 +58,61 @@ internal sealed record TunnelProfile(
 
     private static string? ReadScalar(string yaml, string key)
     {
-        var match = Regex.Match(
-            yaml,
-            @"(?m)^\s*" + Regex.Escape(key) + @"\s*:\s*['"" ]?(?<value>[^'""\r\n#]+)");
-        return match.Success ? match.Groups["value"].Value.Trim() : null;
+        // Read one leaf line only. Native tunnel-client emits JSON-compatible quoted
+        // YAML strings, including escaped quotes around executable paths with spaces.
+        var match = Regex.Match(yaml, @"(?m)^[ \t]*" + Regex.Escape(key) + @"[ \t]*:[ \t]*(?<value>[^\r\n]*)\r?$");
+        if (!match.Success) return null;
+        var scalar = match.Groups["value"].Value.Trim();
+        if (scalar.Length == 0 || scalar[0] == '#') return null;
+        if (scalar[0] == '"')
+        {
+            try
+            {
+                var bytes = Encoding.UTF8.GetBytes(scalar);
+                var reader = new Utf8JsonReader(bytes);
+                if (!reader.Read() || reader.TokenType != JsonTokenType.String)
+                    throw new JsonException("Expected a quoted string.");
+                var value = reader.GetString();
+                ValidateTail(Encoding.UTF8.GetString(bytes.AsSpan((int)reader.BytesConsumed)), key);
+                return value;
+            }
+            catch (JsonException ex) { throw new InvalidDataException($"Tunnel profile {key} contains an invalid quoted scalar.", ex); }
+        }
+        if (scalar[0] == '\'')
+        {
+            var value = new StringBuilder();
+            for (var i = 1; i < scalar.Length; i++)
+            {
+                if (scalar[i] != '\'') { value.Append(scalar[i]); continue; }
+                if (i + 1 < scalar.Length && scalar[i + 1] == '\'') { value.Append('\''); i++; continue; }
+                ValidateTail(scalar[(i + 1)..], key);
+                return value.ToString();
+            }
+            throw new InvalidDataException($"Tunnel profile {key} contains an unterminated quoted scalar.");
+        }
+        for (var i = 0; i < scalar.Length; i++)
+            if (scalar[i] == '#' && (i == 0 || char.IsWhiteSpace(scalar[i - 1]))) return scalar[..i].TrimEnd();
+        return scalar;
+    }
+
+    private static void ValidateTail(string tail, string key)
+    {
+        if (tail.Length == 0 || string.IsNullOrWhiteSpace(tail) ||
+            (char.IsWhiteSpace(tail[0]) && tail.TrimStart().StartsWith('#'))) return;
+        throw new InvalidDataException($"Tunnel profile {key} contains unexpected text after its quoted scalar.");
+    }
+
+    internal static string CommandPath(string command)
+    {
+        var path = Environment.ExpandEnvironmentVariables(command.Trim());
+        if (path.StartsWith('"'))
+        {
+            if (path.Length < 2 || !path.EndsWith('"') || path[1..^1].Contains('"'))
+                throw new InvalidDataException("The MCP command must contain one executable path without arguments.");
+            path = path[1..^1];
+        }
+        if (path.Contains('"') || path.Any(char.IsControl))
+            throw new InvalidDataException("The MCP command contains invalid executable path characters.");
+        return Path.GetFullPath(path.Replace('/', Path.DirectorySeparatorChar));
     }
 }

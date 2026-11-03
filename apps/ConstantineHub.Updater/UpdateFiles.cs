@@ -47,7 +47,7 @@ internal static class UpdateFiles
                 || ex is UnauthorizedAccessException && (ex.HResult & 0xffff) == 5)
             {
                 if (timer.Elapsed >= timeout)
-                    throw new IOException($"File cannot be replaced: {path}. Close other Constantine Hub instances or the program using this file, and check write permissions, then retry.", ex);
+                    throw new IOException($"File cannot be replaced: {path}. Close other ConHub. instances or the program using this file, and check write permissions, then retry.", ex);
                 Thread.Sleep(100);
             }
         }

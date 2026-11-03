@@ -32,6 +32,21 @@ internal static class Program
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args is ["--nvidia-live"])
+        {
+            NvidiaUiTests.Live().GetAwaiter().GetResult();
+            return 0;
+        }
+        if (args is ["--nvidia-managed", var nvidiaTunnelId])
+        {
+            NvidiaManagedTests.RunAsync(nvidiaTunnelId).GetAwaiter().GetResult();
+            return 0;
+        }
+        if (args is ["--replay-logs", var firstLog, var secondLog])
+        {
+            LogReplayDiagnostics.Run([firstLog, secondLog]);
+            return 0;
+        }
         try
         {
             using var watchdog = new System.Threading.Timer(_ =>
@@ -40,11 +55,15 @@ internal static class Program
                 Environment.Exit(1);
             }, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan);
             TestConnections();
+            ReconnectTests.Run();
+            GodotRecoveryTests.Run();
+            TrayIdentityTests.Run();
             TestUpdater();
+            PackageRetirementTests.Run();
             TunnelLifecycleTests.Run();
             TestPluginInstaller(args.Length == 2 && args[0] == "--plugin-client" ? args[1] : null);
             // A hosted CI runner has no workstation Godot project/configuration.
-            var fixture = Path.Combine(AppContext.BaseDirectory, "smoke-fixture");
+            var fixture = Path.Combine(AppContext.BaseDirectory, "smoke-fixture-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(fixture);
             File.WriteAllText(Path.Combine(fixture, "project.godot"), "[application]\nconfig/name=\"Hub smoke tests\"\n");
             Environment.SetEnvironmentVariable("CONSTANTINE_GODOT_MCP_CONFIG", Path.Combine(fixture, "godot.json"));
@@ -55,13 +74,24 @@ internal static class Program
             GodotSettingsStore.Save(new GodotSettings(fixture, "smoke-godot", "tunnel_smoke", 8082,
                 "127.0.0.1", 6262, "127.0.0.1", 6263, null, fixture, false));
             TestCanonicalKnowledge(fixture);
+            GodotProjectTests.Run(fixture);
+            WorkspaceFeaturesTests.FileHandling(fixture);
+            LocalFilesRecoveryTests.Run(fixture);
+            GodotStartupTests.Run(fixture);
+            LogViewTests.Run();
             Console.WriteLine("Constructing UI");
-            using var form = new MainForm { ShowInTaskbar = false };
+            using var form = new MainForm(enableTray: false);
             UiPass.Apply(form);
             UiAcceptancePass.Apply(form);
             Console.WriteLine("Showing UI");
             form.Show();
             Pump();
+            NvidiaUiTests.Run(form);
+            GodotRecoveryTests.Ui(form);
+            WorkspaceFeaturesTests.WindowBehavior(form);
+            WorkspaceFeaturesTests.PreviewExit();
+            WorkspaceFeaturesTests.Dashboard(form);
+            WorkspaceFeaturesTests.FileWindow(form, fixture);
             Check(Descendants<Label>(form).Any(l => l.Text == "MCP CONNECTIONS"), "semantic connection card present");
             Check(!Descendants<Label>(form).Any(l => l.Text == "Needs attention"), "inactive bridges do not show generic program error");
             var shortcuts = Descendants<Button>(form).Where(b => b.Text is "Skills" or "Contracts").ToArray();
@@ -71,11 +101,12 @@ internal static class Program
             form.Size = form.MinimumSize;
             Pump();
             Check(shortcuts.All(b => b.Right <= b.Parent!.ClientSize.Width && b.Bottom <= b.Parent.ClientSize.Height),
-                "compact canonical buttons fit the minimum window size");
+                "compact canonical buttons fit the minimum window size: " + string.Join("; ", shortcuts.Select(b =>
+                    $"{b.Text} {b.Bounds} in {b.Parent!.ClientSize}, DPI {form.DeviceDpi}, window {form.Size}")));
             form.Size = originalSize;
             Pump();
 
-            var starts = Descendants<Button>(form).Where(b => b.Text == "Start").ToArray();
+            var starts = Descendants<Button>(form).Where(b => b.Text == "Start" && !b.Name.StartsWith("nvidia-")).ToArray();
             var legacy = starts.Where(b => b.Tag is EventHandler).ToArray();
             var headers = starts.Where(b => b.Tag is null).ToArray();
             Check(legacy.Length == 3 && headers.Length == 3, "three adapter Start actions");
@@ -98,7 +129,7 @@ internal static class Program
                 Pump();
             }
             HelperUiTests.Run(form);
-            foreach (var action in Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart"))
+            foreach (var action in Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart" && !b.Name.StartsWith("rail-") && !b.Name.StartsWith("nvidia-")))
             {
                 var calls = 0;
                 action.Tag = new EventHandler((_, _) => calls++);
@@ -108,7 +139,7 @@ internal static class Program
 
             foreach (var id in new[] { "local-files", "blender", "godot" })
                 form.UpdateTunnelActions(id, AdapterState.External);
-            var protectedActions = Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart").ToArray();
+            var protectedActions = Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart" && !b.Name.StartsWith("rail-") && !b.Name.StartsWith("nvidia-")).ToArray();
             Check(protectedActions.Length == 6 && protectedActions.All(b => !b.Enabled), "external tunnels disable Stop/Restart in all adapter cards");
             Check(Descendants<Label>(form).Count(l => l.Tag is string hint && hint == ExternalTunnelControlException.Guidance) == 3,
                 "each external tunnel has launcher/restart guidance");
@@ -155,7 +186,7 @@ internal static class Program
             localInstall.Tag = new EventHandler((_, _) => dispatched++);
             MainForm.InvokeButtonAction(localInstall);
             Check(dispatched == 1, "plugin install action dispatches");
-            form.Close();
+            form.RequestExit();
             Pump();
             Check(menu.IsDisposed, "Settings menu disposed with owner");
             Console.WriteLine("PASS: all UI regressions");

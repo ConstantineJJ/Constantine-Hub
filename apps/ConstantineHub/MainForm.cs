@@ -10,9 +10,9 @@ internal sealed partial class MainForm : Form
     private readonly LocalFilesAdapter _localFiles = new();
     private readonly BlenderAdapter _blender = new();
     private readonly GodotAdapter _godot = new();
-    private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 1500 };
+    private readonly System.Windows.Forms.Timer _statusTimer = new() { Interval = 5000 };
     private readonly RichTextBox _log = new();
-    private readonly NotifyIcon _trayIcon = new();
+    private readonly StableTrayIcon _trayIcon = new();
     private readonly UpdateService _updates = new();
     private readonly List<string> _allLogLines = new();
     private Button? _verboseButton;
@@ -40,6 +40,10 @@ internal sealed partial class MainForm : Form
     private bool _refreshing;
     private bool _checkingUpdates;
     private bool _trayHintShown;
+    private bool _exitRequested;
+    private readonly bool _enableTray;
+    private readonly bool _closeToTray;
+    internal string UpdateLogTail => string.Join(Environment.NewLine, _allLogLines.TakeLast(40));
     private FormWindowState _restoreWindowState = FormWindowState.Normal;
 
     private static readonly Color Good = Color.FromArgb(92, 201, 120);
@@ -47,9 +51,11 @@ internal sealed partial class MainForm : Form
     private static readonly Color Warn = Color.FromArgb(232, 188, 104);
     private static readonly Color Muted = Color.FromArgb(170, 174, 184);
 
-    internal MainForm()
+    internal MainForm(bool enableTray = false, bool closeToTray = true)
     {
-        Text = "Constantine Hub";
+        _enableTray = enableTray;
+        _closeToTray = closeToTray;
+        Text = "ConHub.";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(1040, 980);
         Size = new Size(1180, 1120);
@@ -59,41 +65,64 @@ internal sealed partial class MainForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         Icon = AppIconProvider.Current;
 
+        InitializeReconnect();
         BuildUi();
         ConfigureTray();
 
         _localFiles.LogLine += LogFromAnyThread;
         _blender.LogLine += LogFromAnyThread;
         _godot.LogLine += LogFromAnyThread;
+        _nvidia.LogLine += LogFromAnyThread;
         _helper.LogLine += LogFromAnyThread;
-        _statusTimer.Tick += async (_, _) => await RefreshStatusAsync();
+        _statusTimer.Tick += async (_, _) =>
+        {
+            if (_reconnect is not null) _ = _reconnect.CheckAsync();
+            await RefreshStatusAsync();
+        };
         _statusTimer.Start();
 
         Resize += (_, _) =>
         {
-            if (WindowState == FormWindowState.Minimized)
-                HideToTray();
-            else if (WindowState != FormWindowState.Minimized)
+            if (WindowState != FormWindowState.Minimized)
                 _restoreWindowState = WindowState;
+        };
+        VisibleChanged += (_, _) =>
+        {
+            _statusTimer.Interval = Visible ? 5000 : 15000;
+            FlushLogView();
+        };
+        _log.VisibleChanged += (_, _) => FlushLogView();
+        Disposed += (_, _) => { _trayIcon.ContextMenuStrip?.Dispose(); _trayIcon.Dispose(); _reconnect?.Dispose(); };
+        FormClosing += (_, e) =>
+        {
+            if (!_exitRequested && _closeToTray && e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                HideToTray();
+            }
         };
 
         Shown += async (_, _) =>
         {
-            Log($"Constantine Hub v{GetDisplayVersion()} started.");
+            Log($"ConHub. v{GetDisplayVersion()} started.");
             Log("Local Files MCP, Blender MCP and Godot MCP are managed adapters.");
             await RefreshStatusAsync();
-            _ = CheckForUpdatesAsync(silentWhenCurrent: true);
+            if (_enableTray) _ = CheckForUpdatesAsync(silentWhenCurrent: true);
         };
 
         FormClosed += (_, _) =>
         {
             _statusTimer.Stop();
+            _reconnect?.Dispose();
             _trayIcon.Visible = false;
+            _trayIcon.ContextMenuStrip?.Dispose();
             _trayIcon.Dispose();
+            _statusTimer.Dispose();
             _tunnelActionTips.Dispose();
             _localFiles.Dispose();
             _blender.Dispose();
             _godot.Dispose();
+            _nvidia.Dispose();
             _helper.LogLine -= LogFromAnyThread;
             _helper.Dispose();
         };
@@ -128,7 +157,7 @@ internal sealed partial class MainForm : Form
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         header.Controls.Add(new Label
         {
-            Text = "Constantine Hub",
+            Text = "ConHub.",
             Font = new Font("Segoe UI Semibold", 24F),
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
@@ -168,6 +197,7 @@ internal sealed partial class MainForm : Form
 
         _log.Dock = DockStyle.Fill;
         _log.ReadOnly = true;
+        _log.DetectUrls = false;
         _log.BackColor = Color.FromArgb(15, 17, 21);
         _log.ForeColor = Color.Gainsboro;
         _log.BorderStyle = BorderStyle.FixedSingle;
@@ -360,29 +390,42 @@ internal sealed partial class MainForm : Form
     private void ConfigureTray()
     {
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Open Constantine Hub", null, (_, _) => RestoreFromTray());
+        menu.Items.Add("Open ConHub.", null, (_, _) => RestoreFromTray());
+        menu.Items.Add("Tray history…", null, (_, _) => { using var history = new TrayHistoryForm(); history.ShowDialog(this); });
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Start All", null, async (_, _) => await StartAllAsync());
         menu.Items.Add("Stop Hub-Owned", null, async (_, _) => await StopAllOwnedAsync());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit", null, (_, _) => Close());
+        menu.Items.Add("Exit", null, (_, _) => RequestExit());
 
-        _trayIcon.Text = "Constantine Hub";
+        _trayIcon.Text = "ConHub.";
         _trayIcon.Icon = AppIconProvider.Current;
         _trayIcon.ContextMenuStrip = menu;
-        _trayIcon.Visible = true;
+        _trayIcon.Visible = _enableTray;
         _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+    }
+
+    internal void RequestExit()
+    {
+        _exitRequested = true;
+        Close();
     }
 
     private void HideToTray()
     {
+        if (_enableTray && !_trayIcon.IsRegistered)
+        {
+            Log("Tray icon unavailable: " + _trayIcon.LastError);
+            WindowState = FormWindowState.Normal;
+            return;
+        }
         if (WindowState != FormWindowState.Minimized)
             _restoreWindowState = WindowState;
 
         Hide();
         ShowInTaskbar = false;
 
-        if (_trayHintShown)
+        if (_trayHintShown || !_enableTray)
             return;
 
         _trayHintShown = true;
@@ -390,7 +433,7 @@ internal sealed partial class MainForm : Form
         {
             _trayIcon.ShowBalloonTip(
                 1500,
-                "Constantine Hub",
+                "ConHub.",
                 "Hub is still running. Double-click the tray icon to restore it.",
                 ToolTipIcon.Info);
         }
@@ -400,7 +443,7 @@ internal sealed partial class MainForm : Form
         }
     }
 
-    private void RestoreFromTray()
+    internal void RestoreFromTray()
     {
         if (!Visible)
             Show();
@@ -425,6 +468,7 @@ internal sealed partial class MainForm : Form
             UpdateTunnelActions(_localFiles.Id, local.State);
 
             var summary = _localFiles.SettingsSummary;
+            RefreshAllowlistNotification();
             SetStatus(_localRoots, summary.ConfigValid, summary.ConfigValid
                 ? $"{summary.RootCount} configured"
                 : summary.Message);
@@ -448,29 +492,32 @@ internal sealed partial class MainForm : Form
                     : blender.Skills.Message);
 
             var godot = await _godot.GetSnapshotAsync();
-            SetStatus(_godotProject, godot.Configured, godot.ProjectRoot);
+            SetStatus(_godotProject, godot.Configured, godot.Configured ? godot.ProjectRoot : godot.Plugin.Message);
             SetStatus(_godotPlugin, godot.Plugin.Installed && godot.Plugin.Enabled, godot.Plugin.Message);
             SetOptionalStatus(_godotEditor, godot.EditorBridgeConnected,
                 godot.EditorBridgeConnected
                     ? $"Connected {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}"
-                    : $"Not listening on {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}");
+                    : godot.EditorBridgeIssue ?? $"Not listening on {_godot.Settings.EditorHost}:{_godot.Settings.EditorPort}");
             SetOptionalStatus(_godotRuntime, godot.RuntimeBridgeConnected,
                 godot.RuntimeBridgeConnected
                     ? $"Connected {_godot.Settings.RuntimeHost}:{_godot.Settings.RuntimePort}"
                     : "Idle / runtime not running");
             SetState(_godotTunnel, godot.TunnelStatus.State, godot.TunnelStatus.Summary);
             UpdateTunnelActions(_godot.Id, godot.TunnelStatus.State);
+            await RefreshNvidiaAsync();
             await RefreshHelperAsync();
             SetStatus(_godotSkills, godot.SkillsOk, godot.SkillsSummary);
             _connections = [
                 new("Local Files", local.State, SetupIssue: summary.ConfigValid ? null : summary.Message),
                 new("Blender", blender.TunnelStatus.State, blender.BridgeConnected,
                     blender.Skills.Success ? null : blender.Skills.Message),
+                new("NVIDIA App", _latestNvidia?.TunnelStatus.State ?? AdapterState.NotConfigured, _latestNvidia?.HttpAvailable),
                 new("Godot editor", godot.TunnelStatus.State, godot.EditorBridgeConnected,
-                    !godot.Configured ? "Project not configured" :
+                    !godot.Configured ? godot.Plugin.Message :
                     !godot.Plugin.Installed || !godot.Plugin.Enabled ? godot.Plugin.Message :
                     !godot.SkillsOk ? godot.SkillsSummary : null)
             ];
+            UpdateBridgeRail(local, blender, godot);
             _actionErrors.Remove("Status check");
         }
         catch (Exception ex)
@@ -490,6 +537,7 @@ internal sealed partial class MainForm : Form
         await RunAdapterActionQuietAsync("Start Local Files", _localFiles.StartAsync);
         await RunAdapterActionQuietAsync("Start Blender MCP", _blender.StartAsync);
         await RunAdapterActionQuietAsync("Start Godot MCP", _godot.StartAsync);
+        await StartNvidiaIfConfiguredAsync();
         if (HelperInGlobalActions()) await RunAdapterActionQuietAsync("Start MCP Helper", _helper.StartAsync);
         await RefreshStatusAsync();
     }
@@ -499,6 +547,7 @@ internal sealed partial class MainForm : Form
         Log("Stop Hub-Owned requested. External/adopted tunnels will be left untouched.");
         if (HelperInGlobalActions()) await RunAdapterActionQuietAsync("Stop MCP Helper", _helper.StopAsync);
         await RunAdapterActionQuietAsync("Stop Godot MCP", _godot.StopAsync);
+        await RunAdapterActionQuietAsync("Stop NVIDIA App MCP", _nvidia.StopAsync);
         await RunAdapterActionQuietAsync("Stop Blender MCP", _blender.StopAsync);
         await RunAdapterActionQuietAsync("Stop Local Files", _localFiles.StopAsync);
         await RefreshStatusAsync();
@@ -668,34 +717,12 @@ internal sealed partial class MainForm : Form
 
     private async Task OpenLocalFilesSettingsAsync()
     {
-        var before = await _localFiles.GetStatusAsync();
         using var form = new LocalFilesSettingsForm();
         if (form.ShowDialog(this) != DialogResult.OK)
             return;
 
         Log("Local Files allowlist saved.");
-        if (before.State == AdapterState.Running)
-        {
-            try
-            {
-                Log("Restarting Hub-owned Local Files tunnel to apply the new allowlist…");
-                await _localFiles.RestartAsync();
-            }
-            catch (Exception ex)
-            {
-                Log("Automatic Local Files restart FAILED: " + ex.Message);
-                MessageBox.Show(this, ex.Message, "Restart Local Files MCP", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-        }
-        else if (before.State == AdapterState.External)
-        {
-            MessageBox.Show(
-                this,
-                "Settings were saved. The current Local Files tunnel is external/adopted, so Hub will not kill it. Restart that tunnel once to load the new allowlist, or stop it and then press Start in Hub.",
-                "Restart required",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-        }
+        await RunAdapterActionAsync("Apply Local Files allowlist", _ => ApplyFileAccessAsync(true));
 
         await RefreshStatusAsync();
     }
@@ -707,20 +734,20 @@ internal sealed partial class MainForm : Form
         try
         {
             var current = typeof(MainForm).Assembly.GetName().Version ?? new Version(0, 1, 0);
-            Log("Checking GitHub Releases for Constantine Hub updates…");
+            Log("Checking GitHub Releases for ConHub. updates…");
             var update = await _updates.CheckForStableUpdateAsync(current);
             if (update is null)
             {
                 Log("No newer stable release is available.");
                 if (!silentWhenCurrent)
-                    MessageBox.Show(this, "You already have the latest stable Constantine Hub release.", "Updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(this, "You already have the latest stable ConHub. release.", "Updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
             Log($"Update available: {GetDisplayVersion()} → {update.Tag}");
             var answer = MessageBox.Show(
                 this,
-                $"A new Constantine Hub release is available.\n\nCurrent: {GetDisplayVersion()}\nAvailable: {update.Tag}\n\nDownload, verify SHA-256 and install it now?",
+                $"A new ConHub. release is available.\n\nCurrent: {GetDisplayVersion()}\nAvailable: {update.Tag}\n\nDownload, verify SHA-256 and install it now?",
                 "Update available",
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Information);
@@ -729,8 +756,9 @@ internal sealed partial class MainForm : Form
 
             Log("Downloading and verifying update package…");
             await _updates.StageAndLaunchAsync(update, current);
-            Log("Updater started. Constantine Hub will now exit and restart.");
+            Log("Updater started. ConHub. will now exit and restart.");
             _trayIcon.Visible = false;
+            _exitRequested = true;
             Application.Exit();
         }
         catch (Exception ex)
@@ -747,14 +775,8 @@ internal sealed partial class MainForm : Form
         if (_verboseButton is not null)
             _verboseButton.Text = _verboseLogs ? "Verbose: On" : "Verbose: Off";
 
-        _log.Clear();
-        foreach (var line in _allLogLines)
-        {
-            if (_verboseLogs || !IsVerboseTunnelLine(line))
-                _log.AppendText(line + Environment.NewLine);
-        }
-        _log.SelectionStart = _log.TextLength;
-        _log.ScrollToCaret();
+        _logDirty = true;
+        FlushLogView();
     }
 
     private static bool IsVerboseTunnelLine(string line)
@@ -794,20 +816,21 @@ internal sealed partial class MainForm : Form
 
     private void Log(string message)
     {
+        if (IsDisposed || Disposing) return;
         if (InvokeRequired)
         {
-            BeginInvoke(new Action(() => Log(message)));
+            QueueLog(message);
             return;
         }
 
         var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
         _allLogLines.Add(line);
-        if (_verboseLogs || !IsVerboseTunnelLine(line))
+        if (_allLogLines.Count > 3000)
         {
-            _log.AppendText(line + Environment.NewLine);
-            _log.SelectionStart = _log.TextLength;
-            _log.ScrollToCaret();
+            _allLogLines.RemoveRange(0, 500);
+            _logDirty = true;
         }
+        if (_verboseLogs || !IsVerboseTunnelLine(line)) _logDirty = true;
     }
 
     private void LogFromAnyThread(string message) => Log(message);
@@ -824,7 +847,7 @@ internal sealed partial class MainForm : Form
             return;
 
         File.WriteAllText(dialog.FileName, string.Join(Environment.NewLine, _allLogLines) + Environment.NewLine);
-        Log("Log saved (full diagnostics): " + dialog.FileName);
+        Log("Log saved (recent session diagnostics): " + dialog.FileName);
     }
 
     private static string GetDisplayVersion()

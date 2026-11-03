@@ -13,6 +13,13 @@ internal sealed class LocalFilesAdapter : TunnelProfileAdapterBase
 
     internal LocalFilesSummary SettingsSummary => LocalFilesSettingsStore.GetSummary();
 
+    public override async Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = LocalFilesSettingsStore.LoadRules();
+        await base.StartAsync(cancellationToken);
+    }
+
     protected override Task<IReadOnlyDictionary<string, string>> GetAdditionalDetailsAsync(
         CancellationToken cancellationToken)
     {

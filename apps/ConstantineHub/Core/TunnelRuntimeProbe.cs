@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 
 namespace ConstantineHub.Core;
@@ -6,6 +7,7 @@ internal enum TunnelRuntimeState
 {
     Stopped,
     RunningExpected,
+    McpUnavailable,
     Occupied,
     InvalidProfile
 }
@@ -47,7 +49,7 @@ internal static class TunnelRuntimeProbe
             var baseUrl = $"http://127.0.0.1:{profile.HealthPort}";
             using var ready = await Http.GetAsync(baseUrl + "/readyz", cancellationToken);
             using var status = await Http.GetAsync(baseUrl + "/api/status", cancellationToken);
-            if (!ready.IsSuccessStatusCode || !status.IsSuccessStatusCode)
+            if (!status.IsSuccessStatusCode)
                 return new(
                     TunnelRuntimeState.Occupied,
                     $"Port {profile.HealthPort} accepts TCP but does not expose a ready tunnel-client status endpoint.",
@@ -63,20 +65,24 @@ internal static class TunnelRuntimeProbe
                 : null;
 
             string? liveCommand = null;
+            string? livePid = null;
+            string? probeStatus = null;
+            bool mainEnabled = false;
             if (root.TryGetProperty("channels", out var channels) && channels.ValueKind == JsonValueKind.Array)
             {
                 foreach (var channel in channels.EnumerateArray())
                 {
                     if (!channel.TryGetProperty("name", out var channelName) || channelName.GetString() != "main")
                         continue;
+                    mainEnabled = !channel.TryGetProperty("enabled", out var enabled) || enabled.ValueKind == JsonValueKind.True;
+                    probeStatus = channel.TryGetProperty("probe_status", out var probe) ? probe.GetString() : null;
                     if (!channel.TryGetProperty("details", out var details) || details.ValueKind != JsonValueKind.Array)
                         continue;
                     foreach (var detail in details.EnumerateArray())
                     {
-                        if (!detail.TryGetProperty("key", out var key) || key.GetString() != "command")
-                            continue;
-                        if (detail.TryGetProperty("value", out var value))
-                            liveCommand = value.GetString();
+                        if (!detail.TryGetProperty("key", out var key) || !detail.TryGetProperty("value", out var value)) continue;
+                        if (key.GetString() == "command") liveCommand = value.GetString();
+                        if (key.GetString() == "pid") livePid = value.GetString();
                     }
                 }
             }
@@ -85,6 +91,12 @@ internal static class TunnelRuntimeProbe
                 string.Equals(liveAddress, profile.ListenAddress, StringComparison.Ordinal) &&
                 SameCommand(liveCommand, profile.McpCommand))
             {
+                // /readyz and probe_status may remain OK after the stdio child exits.
+                // Verify the advertised child too; tunnel identity alone is not MCP readiness.
+                if (!ready.IsSuccessStatusCode || !mainEnabled || probeStatus is not (null or "ok") || !IsProcessRunning(livePid))
+                    return new(TunnelRuntimeState.McpUnavailable,
+                        "Tunnel is running, but its MCP server is unavailable (child PID " + (livePid ?? "missing") +
+                        "). Restart the tunnel to restore MCP calls.", profile);
                 return new(
                     TunnelRuntimeState.RunningExpected,
                     $"Expected tunnel is ready on {profile.ListenAddress}.",
@@ -103,6 +115,18 @@ internal static class TunnelRuntimeProbe
                 $"Port {profile.HealthPort} is occupied but its identity could not be verified: {ex.Message}",
                 profile);
         }
+    }
+
+    private static bool IsProcessRunning(string? value)
+    {
+        if (!int.TryParse(value, out var pid) || pid <= 0) return false;
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException) { return false; }
+        catch (InvalidOperationException) { return false; }
     }
 
     private static bool SameCommand(string? left, string? right)

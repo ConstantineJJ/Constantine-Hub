@@ -27,6 +27,7 @@ def make_fixture(root: Path) -> tuple[Path, dict[str, str]]:
     project.mkdir(parents=True)
     (project / "project.godot").write_text('[application]\nconfig/name="CI Godot Fixture"\n', encoding="utf-8")
     (project / "hello.txt").write_text("hello godot mcp\n", encoding="utf-8")
+    (project / "large.txt").write_text("\x01" * 300_000, encoding="utf-8")
     (tools_c / "docs").mkdir(parents=True)
     (tools_c / "docs" / "foundation.md").write_text("# foundation\nCI contract\n", encoding="utf-8")
     for name in ("godot-project", "godot-asset-integration", "verification"):
@@ -60,6 +61,10 @@ async def main() -> None:
                 assert not skill_result.is_error, skill_result
                 list_result = await session.call_tool("godot_list_project_files", {"path": "res://", "recursive": False})
                 assert not list_result.is_error, list_result
+                oversized = await session.call_tool("godot_read_project_file", {"path": "res://large.txt"})
+                assert oversized.is_error and "budget" in oversized.content[0].text, oversized
+                after_error = await session.call_tool("godot_status", {})
+                assert not after_error.is_error, after_error
 
         from godot_mcp.config import GodotSettings
         from godot_mcp.project_service import ProjectService

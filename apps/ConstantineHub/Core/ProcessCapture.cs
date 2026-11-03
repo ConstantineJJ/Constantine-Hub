@@ -21,10 +21,18 @@ internal static class ProcessCapture
             psi.ArgumentList.Add(argument);
 
         using var process = new Process { StartInfo = psi };
+        cancellationToken.ThrowIfCancellationRequested();
         process.Start();
         var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        try { await process.WaitForExitAsync(cancellationToken); }
+        catch (OperationCanceledException)
+        {
+            // Cancellation must also stop this owned Doctor/setup child.
+            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            try { await Task.WhenAll(stdout, stderr); } catch (OperationCanceledException) { }
+            throw;
+        }
         return (process.ExitCode, ((await stdout) + (await stderr)).Trim());
     }
 }

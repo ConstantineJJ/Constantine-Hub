@@ -23,13 +23,17 @@ internal static class TunnelLifecycleTests
                 using var reader = new StreamReader(stream, leaveOpen: true);
                 var request = reader.ReadLine();
                 if (request is null) continue; // A TCP-only readiness probe.
+                var fault = File.Exists(profile.ProfilePath + ".fault") ? File.ReadAllText(profile.ProfilePath + ".fault") : "";
                 var body = request.Contains("/api/status") ? JsonSerializer.Serialize(new
                 {
                     control_plane_tunnel_id = profile.TunnelId,
                     health_listen_addr = profile.ListenAddress,
-                    channels = new[] { new { name = "main", details = new[] { new { key = "command", value = profile.McpCommand } } } }
+                    channels = new[] { new { name = "main", enabled = fault != "disabled", transport_kind = "stdio", probe_status = fault == "probe" ? "failed" : "ok",
+                        details = new[] { new { key = "command", value = profile.McpCommand },
+                            new { key = "pid", value = fault == "missing-pid" ? "" : File.Exists(profile.ProfilePath + ".dead") ? "2147483647" : Environment.ProcessId.ToString() } } } }
                 }) : "{}";
-                var response = Encoding.UTF8.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " +
+                var code = fault == "not-ready" && request.Contains("/readyz") ? "503 Unavailable" : "200 OK";
+                var response = Encoding.UTF8.GetBytes("HTTP/1.1 " + code + "\r\nContent-Type: application/json\r\nContent-Length: " +
                     Encoding.UTF8.GetByteCount(body) + "\r\nConnection: close\r\n\r\n" + body);
                 stream.Write(response);
             }
@@ -71,6 +75,21 @@ internal static class TunnelLifecycleTests
             catch (ExternalTunnelControlException ex) { Require(ex.Message.Contains("app or terminal"), "external restart returns expected launcher guidance"); }
             adapter.StopAsync().GetAwaiter().GetResult();
             Require(!external.HasExited && adapter.Pid is null, "Stop and Restart do not kill or replace the external process");
+            File.WriteAllText(profilePath + ".dead", "");
+            Require(adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Degraded,
+                "readyz and stale probe_status cannot hide an exited MCP child");
+            try { adapter.StartAsync().GetAwaiter().GetResult(); throw new Exception("Dead external MCP Start unexpectedly succeeded"); }
+            catch (ExternalTunnelControlException) { Require(!external.HasExited, "Start protects an external tunnel with a dead MCP child"); }
+            try { adapter.RestartAsync().GetAwaiter().GetResult(); throw new Exception("Dead external MCP Restart unexpectedly succeeded"); }
+            catch (ExternalTunnelControlException) { Require(!external.HasExited, "Restart protects an external tunnel with a dead MCP child"); }
+            File.Delete(profilePath + ".dead");
+            foreach (var fault in new[] { "disabled", "probe", "missing-pid", "not-ready" })
+            {
+                File.WriteAllText(profilePath + ".fault", fault);
+                Require(adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Degraded,
+                    "unavailable MCP channel is degraded: " + fault);
+            }
+            File.Delete(profilePath + ".fault");
             File.WriteAllText(profilePath, yaml.Replace("smoke_tunnel", "different_tunnel"));
             try { adapter.RestartAsync().GetAwaiter().GetResult(); throw new Exception("Occupied port restart unexpectedly succeeded"); }
             catch (InvalidOperationException) { Require(!external.HasExited, "mismatched tunnel is a real error and remains untouched"); }
@@ -80,6 +99,15 @@ internal static class TunnelLifecycleTests
             adapter.StartAsync().GetAwaiter().GetResult();
             var firstPid = adapter.Pid;
             Require(firstPid is not null && adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Running, "Hub-owned Start reaches readiness");
+            File.WriteAllText(profilePath + ".dead", "");
+            Require(adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Degraded,
+                "Hub-owned tunnel reports a dead MCP child as degraded");
+            // The replacement fixture represents a fresh child process.
+            adapter.LogLine += line => { if (line.Contains("Stopped Hub-owned tunnel")) File.Delete(profilePath + ".dead"); };
+            adapter.StartAsync().GetAwaiter().GetResult();
+            Require(adapter.Pid is not null && adapter.Pid != firstPid && adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Running,
+                "Start recovers a Hub-owned tunnel whose MCP child exited");
+            firstPid = adapter.Pid;
             adapter.RestartAsync().GetAwaiter().GetResult();
             Require(adapter.Pid is not null && adapter.Pid != firstPid && adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Running,
                 "Hub-owned Restart replaces its process and reaches readiness");

@@ -64,7 +64,7 @@ internal static class Program
                 startInfo.ArgumentList.Add("--updated-to");
                 startInfo.ArgumentList.Add(toVersion);
 
-                var newHub = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not restart Constantine Hub after update.");
+                var newHub = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not restart ConHub. after update.");
                 Log(logPath, $"Started updated Hub PID {newHub.Id}; waiting for startup marker.");
 
                 if (WaitForMarker(marker, TimeSpan.FromSeconds(StartupTimeoutSeconds)))
@@ -120,7 +120,7 @@ internal static class Program
             using var process = Process.GetProcessById(pid);
             Log(logPath, $"Waiting for Hub PID {pid} to exit.");
             if (!process.WaitForExit(30000))
-                throw new TimeoutException("The running Constantine Hub did not exit within 30 seconds.");
+                throw new TimeoutException("The running ConHub. did not exit within 30 seconds.");
         }
         catch (ArgumentException)
         {
@@ -147,9 +147,17 @@ internal static class Program
             .Select(file => (Source: file, Relative: Path.GetRelativePath(source, file)))
             .Select(file => (file.Source, file.Relative, Target: Path.GetFullPath(Path.Combine(target, file.Relative))))
             .OrderBy(file => file.Relative, StringComparer.OrdinalIgnoreCase).ToArray();
-        foreach (var file in files) EnsureInside(target, file.Target);
+        foreach (var file in files)
+        {
+            EnsureInside(target, file.Target);
+            PackageRetirement.Resolve(source, file.Relative);
+            PackageRetirement.Resolve(target, file.Relative);
+            PackageRetirement.Resolve(backupRoot, file.Relative);
+        }
+        var retired = PackageRetirement.Plan(source, target, backupRoot);
         // Check the entire payload before changing even the first installation file.
-        UpdateFiles.WaitUntilWritable(files.Select(file => file.Target), timeout);
+        UpdateFiles.WaitUntilWritable(files.Select(file => file.Target).Concat(retired.Select(file => file.Target)), timeout);
+        foreach (var file in retired) PackageRetirement.Retire(file, replaced, timeout);
         foreach (var file in files)
         {
             var existed = File.Exists(file.Target);

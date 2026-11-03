@@ -30,10 +30,11 @@ internal static class ReleaseUpgradeTests
             catch (IOException) { Check(Hashes(target).OrderBy(p => p.Key).SequenceEqual(original.OrderBy(p => p.Key)), $"locked {previousVersion} installation remains byte-for-byte unchanged"); }
         }
         HubUpdaterProgram.ApplyFiles(candidate, target, backup, replaced, created, TimeSpan.FromSeconds(3));
-        Check(FileVersionInfo.GetVersionInfo(Path.Combine(target, "ConstantineHub.dll")).FileVersion == "0.3.1.0", $"actual {previousVersion} payload upgraded to v0.3.1");
+        var expectedVersion = FileVersionInfo.GetVersionInfo(Path.Combine(candidate, "ConstantineHub.dll")).FileVersion;
+        Check(FileVersionInfo.GetVersionInfo(Path.Combine(target, "ConstantineHub.dll")).FileVersion == expectedVersion, $"actual {previousVersion} payload upgraded to {expectedVersion}");
         Check(File.ReadAllText(Path.Combine(target, "user-settings.local.json")) == "preserve me", "upgrade preserves user installation files");
         var exe = Path.Combine(target, "adapters", "mcp-helper", "McpHelper.exe");
-        Check(HelperPackage.Verify(exe) == "0.1.1", "upgraded installation contains complete verified Helper package");
+        Check(HelperPackage.Verify(exe) == "0.1.2", "upgraded installation contains complete verified Helper 0.1.2 package");
         var workspace = Path.Combine(fixture, "workspace"); Directory.CreateDirectory(workspace);
         File.WriteAllText(Path.Combine(workspace, "Sample.cs"), "public class Sample { public int Number() => 42; }");
         var settings = Path.Combine(fixture, "helper.json");
@@ -51,6 +52,8 @@ internal static class ReleaseUpgradeTests
         var marker = Path.Combine(fixture, "startup-ok.txt");
         var start = new ProcessStartInfo(Path.Combine(target, "ConstantineHub.exe")) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = target };
         start.ArgumentList.Add("--update-ok-file"); start.ArgumentList.Add(marker);
+        start.ArgumentList.Add("--no-tray");
+        start.ArgumentList.Add("--isolated-instance");
         start.Environment["CONSTANTINE_HELPER_SETTINGS"] = settings;
         start.Environment["CONSTANTINE_GODOT_MCP_CONFIG"] = Path.Combine(fixture, "godot.json");
         start.Environment["CONSTANTINE_FILES_CONFIG"] = Path.Combine(fixture, "files.json");

@@ -1,8 +1,8 @@
-<img src="apps/ConstantineHub/Assets/WatermelonCat.png" width="72" alt="Constantine Hub">
+<img src="apps/ConstantineHub/Assets/CH_Ico.png" width="72" alt="ConHub.">
 
-# Constantine Hub
+# ConHub.
 
-A Windows control panel for **Local Files MCP, Blender MCP, Godot MCP and MCP Helper**.
+A Windows control panel for **Local Files MCP, Blender MCP, Godot MCP, NVIDIA App MCP and MCP Helper**.
 Manage local connections, inspect their health and keep Hub updated from GitHub Releases.
 
 [Download the latest stable release](https://github.com/ConstantineJJ/Constantine-Hub/releases/latest)
@@ -22,6 +22,7 @@ Manage local connections, inspect their health and keep Hub updated from GitHub 
 | Local Files MCP | Scoped local filesystem access and connection settings |
 | Blender MCP | Blender bridge/tunnel status, lifecycle and canonical Skills checks |
 | Godot MCP | Project/plugin setup, editor/runtime bridge status and connection lifecycle |
+| NVIDIA App MCP | Loopback MCP discovery, owned tunnel lifecycle and diagnostics in Utility |
 | MCP Helper | Independent C# navigation, semantic references, impact and rename preview |
 
 Connections started outside Hub remain **externally managed**. Hub does not take
@@ -35,7 +36,7 @@ the C# workspace, save and select **Start Helper**. **Connection** copies the en
 and authentication for your MCP client. Keep that connection data private.
 Global Start/Stop participation is opt-in in Helper configuration.
 
-Helper **0.1.1** is bundled with Hub **0.3.1** and is also available as a standalone
+Helper **0.1.2** is bundled with ConHub. **0.5.4** and is also available as a standalone
 `McpHelper-win-x64.zip` in the same release. It includes its own runtime and works
 without Hub or Tools_C. [Standalone usage and API](adapters/mcp-helper/README.md).
 
@@ -45,6 +46,67 @@ rules, generated/dynamic code or unsaved editor buffers. Rename is a **preview**
 this release has no apply or shell-execution tool.
 
 ## Updates
+
+ConHub. 0.5.4 places Home and the Godot project selector in the top bar. Use **Add project…** to
+register an existing `project.godot`, then **Switch** to select it. Hub retains
+earlier projects and restarts its own tunnel when needed. An editor serving a
+different project is reported explicitly, and commands into that editor are blocked.
+
+The right rail shows each MCP service, its bridge state, and a separate **Stop**
+button. Externally managed services retain their ownership protection.
+
+**Files / Файлы** opens the shared inbox at `F:\ChatGPT\Constantine Hub Files`.
+Drop files there or use **Добавить…**; Hub copies them without replacing existing
+assets, adds the folder to Local Files MCP, and connects its stopped file service.
+**Запрос для агента** copies a request containing the selected files and active
+project. Paste it into the agent chat to request installation; dropping a file
+does not modify the game project automatically.
+
+Closing the window keeps Hub and its services in the tray. Minimize keeps the
+normal taskbar window; choose **Exit** in the tray menu to quit. Reopening Hub
+restores the existing instance. UI tests and upgrade fixtures do not add tray icons.
+
+Helper 0.1.2 uses a lightweight authenticated health check for idle status;
+full MCP verification remains available at Start and Doctor. Routine HTTP logging
+is disabled, and Hub bounds its retained log and polls less often in the tray.
+
+### ReConnect fallback
+
+ReConnect is off until clicked. Its header button stays visible when the Godot
+card is collapsed. Green means monitoring, red means confirmed connection failure
+and recovery, yellow means nine attempts exhausted. Each of three cycles runs
+Restart, Restart, then Stop → Doctor → Start using existing ConHub. operations.
+Every operation completes before its status check; success clears the counter.
+Failures are confirmed by another probe; retries wait 10 seconds (confirmation 5
+seconds). Idle time and individual MCP tool errors do not trigger recovery. New
+critical Godot log messages only prompt a status check. Old log files are never
+replayed. Another click disables and cancels automatic work; clicking yellow rearms
+one new series. Manual Godot operations and project switches share the same lock.
+
+### Windows notification area
+
+ConHub. retains `ConstantineHub.exe`, its installation folder, updater asset names,
+settings keys and tunnel profiles for compatibility. Extract updates into the same
+folder. The notification GUID and AppUserModelID are version independent; smoke
+and isolated upgrade runs never register an icon. Unsigned Windows GUID icons are
+bound to the executable path, so moving the application can prevent registration.
+ConHub. reports this rather than creating a replacement identity.
+
+**Tray history…** in the tray menu previews related `NotifyIconSettings` entries.
+Only verified inactive legacy entries from the exact installation path are eligible
+for explicit, individually confirmed removal, with a typed-value backup and a fresh
+ownership check. Unknown historical paths stay preview-only. Other applications,
+current identity, promotion preferences and whole system caches are never reset.
+
+### NVIDIA App MCP
+
+The Utility card uses the supplied Jensen artwork. It reports the actual local
+`nvidia-app` MCP handshake and tools/list separately from tunnel readiness. Local
+HTTP stays on `127.0.0.1`; ConHub. does not launch or stop NVIDIA's external service.
+Configure the existing dedicated `constantine-nvidia` tunnel profile to enable
+agent access. [Setup and verification](adapters/nvidia-app/README.md).
+
+### Installing updates
 
 Use **Check Updates** to find a newer stable release. After confirmation Hub
 downloads the release ZIP/checksum and runs its Updater to replace and restart the
@@ -66,3 +128,5 @@ dotnet run --project apps/ConstantineHub.SmokeTests -c Release -- --helper-packa
 The existing GitHub Actions workflow builds the Hub/Updater, verifies the independent
 Helper, exercises upgrade/recovery and packages the release. Source tests and CI
 remain in the repository; development reports and task logs are kept externally.
+
+v0.5.4 stable publication requires an explicitly approved manual workflow run after all checks. Main-branch builds do not publish a stable release automatically.

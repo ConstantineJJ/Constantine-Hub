@@ -45,7 +45,7 @@ internal static class UiPass
         legacyRoot.Dispose();
 
         form.SuspendLayout();
-        form.MinimumSize = new Size(Scale(form, 1120), Scale(form, 720));
+        form.MinimumSize = new Size(Scale(form, 1240), Scale(form, 720));
         form.Size = new Size(Scale(form, 1400), Scale(form, 900));
         form.BackColor = Background;
         form.ForeColor = TextPrimary;
@@ -68,7 +68,7 @@ internal static class UiPass
         shell.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var adapterCards = new List<AdapterCardHost>();
-        var uiTimer = new System.Windows.Forms.Timer { Interval = 1200 };
+        var uiTimer = new System.Windows.Forms.Timer { Interval = 2500 };
         var toolTip = new ToolTip
         {
             AutoPopDelay = 12000,
@@ -212,9 +212,12 @@ internal static class UiPass
                 ? StripStatusBullet(godotValues[0].Text)
                 : "Not configured";
             currentProjectTop.Text = $"Profile: Local workstation  •  Project: {projectText}";
-            projectRail.Text = projectText;
             toolTip.SetToolTip(currentProjectTop, projectText);
-            toolTip.SetToolTip(projectRail, projectText);
+            if (!projectRail.IsDisposed)
+            {
+                projectRail.Text = projectText;
+                toolTip.SetToolTip(projectRail, projectText);
+            }
 
             var connections = form.Connections;
             healthRail.Text = connections.Title;
@@ -229,7 +232,7 @@ internal static class UiPass
             toolTip.SetToolTip(healthRail, connections.Description);
             toolTip.SetToolTip(healthDetail, connections.Description);
 
-            var updateState = ReadUpdateState(log.Text);
+            var updateState = ReadUpdateState(form.UpdateLogTail);
             updateTop.Text = updateState;
             updateRail.Text = updateState;
             updateRail.ForeColor = updateState.Contains("available", StringComparison.OrdinalIgnoreCase)
@@ -239,7 +242,7 @@ internal static class UiPass
                     : TextSecondary;
         }
 
-        uiTimer.Tick += (_, _) => UpdateChrome();
+        uiTimer.Tick += (_, _) => { if (form.Visible) UpdateChrome(); };
         uiTimer.Start();
         form.FormClosed += (_, _) =>
         {
@@ -279,7 +282,7 @@ internal static class UiPass
             RowCount = 8,
             Margin = Padding.Empty
         };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, Scale(form, 86)));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, Scale(form, 236)));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, Scale(form, 24)));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, Scale(form, 48)));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, Scale(form, 48)));
@@ -291,34 +294,25 @@ internal static class UiPass
         var brand = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
+            ColumnCount = 1,
+            RowCount = 2,
             Margin = Padding.Empty
         };
-        brand.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Scale(form, 62)));
         brand.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        brand.RowStyles.Add(new RowStyle(SizeType.Absolute, Scale(form, 186)));
+        brand.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var icon = new PictureBox
         {
             Dock = DockStyle.Fill,
             SizeMode = PictureBoxSizeMode.Zoom,
-            Margin = new Padding(0, 0, Scale(form, 8), 0),
-            Image = LoadAsset("WatermelonCat.png")
+            Name = "ConHubLogo",
+            Margin = Padding.Empty,
+            Image = LoadAsset("CH_Ico.png")
         };
         brand.Controls.Add(icon, 0, 0);
 
-        var brandText = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 2,
-            Margin = Padding.Empty
-        };
-        brandText.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
-        brandText.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-        brandText.Controls.Add(MakeTextLabel("Constantine", 12.5F, TextPrimary, bold: true), 0, 0);
-        brandText.Controls.Add(MakeTextLabel("HUB", 9.5F, Accent, bold: true), 0, 1);
-        brand.Controls.Add(brandText, 1, 0);
+        brand.Controls.Add(new ConHubBrand { Dock = DockStyle.Fill, Name = "ConHubBrand", Text = "ConHub." }, 0, 1);
         layout.Controls.Add(brand, 0, 0);
 
         var section = MakeTextLabel("WORKSPACE", 8.5F, Color.FromArgb(113, 127, 140), bold: true);
@@ -376,7 +370,7 @@ internal static class UiPass
         };
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
         left.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
-        left.Controls.Add(MakeTextLabel("Dashboard", 15F, TextPrimary, bold: true), 0, 0);
+        left.Controls.Add(new Panel { Name = "TopNavigationHost", Dock = DockStyle.Fill, Margin = Padding.Empty }, 0, 0);
         currentProject.Dock = DockStyle.Fill;
         left.Controls.Add(currentProject, 0, 1);
         layout.Controls.Add(left, 0, 0);
@@ -505,10 +499,11 @@ internal static class UiPass
         inner.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         host.Controls.Add(inner);
 
+        var hasReconnect = title == "GODOT MCP";
         var header = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 5,
+            ColumnCount = hasReconnect ? 6 : 5,
             RowCount = 1,
             Padding = new Padding(Scale(form, 12), Scale(form, 9), Scale(form, 10), Scale(form, 9)),
             Margin = Padding.Empty
@@ -516,6 +511,7 @@ internal static class UiPass
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Scale(form, 48)));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Scale(form, 168)));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        if (hasReconnect) header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Scale(form, 42)));
 
@@ -540,16 +536,25 @@ internal static class UiPass
         header.Controls.Add(titleLabel, 1, 0);
 
         var summary = MakeTextLabel("Checking…", 9.5F, TextSecondary);
-        summary.Dock = DockStyle.Fill;
+        summary.Dock = DockStyle.None;
+        summary.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        summary.Height = Scale(form, 24);
         summary.TextAlign = ContentAlignment.MiddleLeft;
         summary.AutoEllipsis = true;
         summary.Margin = new Padding(Scale(form, 6), 0, Scale(form, 8), 0);
         header.Controls.Add(summary, 2, 0);
 
+        if (hasReconnect)
+        {
+            var reconnect = form.CreateReconnectButton();
+            reconnect.Margin = new Padding(Scale(form, 4), 0, Scale(form, 38), 0);
+            header.Controls.Add(reconnect, 3, 0);
+        }
+
         var start = MakeActionButton(form, "Start", primary: true,
             () => MainForm.InvokeButtonAction(FindButton(originalCard, "Start")));
         start.Margin = new Padding(Scale(form, 4), Scale(form, 3), Scale(form, 8), Scale(form, 3));
-        header.Controls.Add(start, 3, 0);
+        header.Controls.Add(start, hasReconnect ? 4 : 3, 0);
 
         var toggle = new Button
         {
@@ -563,7 +568,7 @@ internal static class UiPass
             TabStop = false
         };
         toggle.FlatAppearance.BorderColor = Border;
-        header.Controls.Add(toggle, 4, 0);
+        header.Controls.Add(toggle, hasReconnect ? 5 : 4, 0);
         inner.Controls.Add(header, 0, 0);
 
         var body = new Panel

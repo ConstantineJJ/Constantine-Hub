@@ -12,8 +12,8 @@ internal static class AppIconProvider
     {
         var pngCandidates = new[]
         {
-            Path.Combine(AppContext.BaseDirectory, "WatermelonCat.png"),
-            Path.Combine(AppContext.BaseDirectory, "Assets", "WatermelonCat.png")
+            Path.Combine(AppContext.BaseDirectory, "CH_Ico.png"),
+            Path.Combine(AppContext.BaseDirectory, "Assets", "CH_Ico.png")
         };
 
         foreach (var candidate in pngCandidates)
@@ -23,7 +23,8 @@ internal static class AppIconProvider
                 if (!File.Exists(candidate))
                     continue;
 
-                using var bitmap = new Bitmap(candidate);
+                using var source = new Bitmap(candidate);
+                using var bitmap = new Bitmap(source, new Size(64, 64));
                 var handle = bitmap.GetHicon();
                 try
                 {

@@ -126,6 +126,8 @@ internal sealed partial class MainForm
 
     internal void UpdateHelperStatus(AdapterStatus status)
     {
+        _latestHelper = status;
+        SetBridgeRow("mcp-helper", status.State, status.Summary);
         SetState(_helperStatus, status.State, status.Summary);
         if (status.Details?.TryGetValue("Workspace", out var root) == true) _helperWorkspace.Text = root;
         if (_helperStart is null) return;

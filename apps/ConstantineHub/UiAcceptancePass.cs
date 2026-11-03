@@ -26,7 +26,7 @@ internal static class UiAcceptancePass
         shell.ColumnStyles[2].SizeType = SizeType.Absolute;
         shell.ColumnStyles[2].Width = Scale(form, 288);
         shell.RowStyles[0].SizeType = SizeType.Absolute;
-        shell.RowStyles[0].Height = Scale(form, 84);
+        shell.RowStyles[0].Height = Scale(form, 150);
 
         PolishNavigation(form, shell.GetControlFromPosition(0, 0));
         PolishTopBar(shell.GetControlFromPosition(1, 0));
@@ -41,6 +41,8 @@ internal static class UiAcceptancePass
 
         form.PerformLayout();
         form.AttachHelperPanel();
+        form.AttachWorkspaceFeatures();
+        form.AttachV054Features();
     }
 
     private static void PolishNavigation(MainForm form, Control? navigation)
@@ -56,23 +58,6 @@ internal static class UiAcceptancePass
         CollapseNavRow(layout, "Updates", 4);
         CollapseNavRow(layout, "Settings", 6);
 
-        if (layout.GetControlFromPosition(0, 0) is TableLayoutPanel brand)
-        {
-            if (brand.ColumnStyles.Count > 0)
-            {
-                brand.ColumnStyles[0].SizeType = SizeType.Absolute;
-                brand.ColumnStyles[0].Width = Scale(form, 52);
-            }
-
-            var title = Descendants<Label>(brand)
-                .FirstOrDefault(label => label.Text.Equals("Constantine", StringComparison.OrdinalIgnoreCase));
-            if (title is not null)
-            {
-                title.Font = new Font("Segoe UI Semibold", 11F);
-                title.AutoEllipsis = false;
-                title.TextAlign = ContentAlignment.MiddleLeft;
-            }
-        }
     }
 
     private static void CollapseNavRow(TableLayoutPanel layout, string buttonText, int row)

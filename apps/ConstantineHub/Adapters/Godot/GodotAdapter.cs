@@ -65,7 +65,7 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
             {
                 GodotSettingsStore.Save(candidate);
                 _settings = candidate;
-                if (restart) await StartAsync(cancellationToken);
+                if (restart) await StartCoreAsync(cancellationToken);
                 Log("Selected project: " + candidate.ProjectRoot);
             }
             catch
@@ -75,7 +75,7 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
                 _settings = previous;
                 if (restart)
                 {
-                    try { await StartAsync(CancellationToken.None); }
+                    try { await StartCoreAsync(CancellationToken.None); }
                     catch (Exception restoreError) { Log("Previous project restored; tunnel restart failed: " + restoreError.Message); }
                 }
                 throw;
@@ -114,7 +114,56 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
     }
 
     public override async Task StartAsync(CancellationToken cancellationToken = default)
+        => await ExclusiveAsync(StartCoreAsync, cancellationToken);
+
+    public override async Task StopAsync(CancellationToken cancellationToken = default)
+        => await ExclusiveAsync(base.StopAsync, cancellationToken);
+
+    public override async Task RestartAsync(CancellationToken cancellationToken = default)
+        => await ExclusiveAsync(RestartCoreAsync, cancellationToken);
+
+    private async Task ExclusiveAsync(Func<CancellationToken, Task> action, CancellationToken token)
     {
+        await _projectSwitch.WaitAsync(token);
+        try { token.ThrowIfCancellationRequested(); await action(token); }
+        finally { _projectSwitch.Release(); }
+    }
+
+    private async Task EnsureRecoveryOwnershipAsync(CancellationToken token)
+    {
+        var current = await TunnelRuntimeProbe.ProbeAsync(ProfileName, token);
+        if (!OwnsRunningTunnel && current.State is TunnelRuntimeState.RunningExpected or TunnelRuntimeState.McpUnavailable)
+            throw new ExternalTunnelControlException(DisplayName);
+        if (current.State == TunnelRuntimeState.Occupied) throw new InvalidOperationException(current.Message);
+    }
+
+    private async Task RestartCoreAsync(CancellationToken token)
+    {
+        await EnsureRecoveryOwnershipAsync(token);
+        await base.StopAsync(token);
+        await StartCoreAsync(token);
+    }
+
+    internal Task RecoverAsync(bool alternate, CancellationToken token)
+        => ExclusiveAsync(async ct =>
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(TimeSpan.FromSeconds(90));
+            ct = deadline.Token;
+            // Recheck after waiting for a main-module Restart/project switch.
+            var snapshot = await GetSnapshotAsync(ct);
+            if (snapshot.EditorBridgeConnected && snapshot.TunnelStatus.State is AdapterState.Running or AdapterState.External) return;
+            if (!alternate) { await RestartCoreAsync(ct); return; }
+            await EnsureRecoveryOwnershipAsync(ct);
+            await base.StopAsync(ct);
+            Log(await DoctorCoreAsync(ct));
+            ct.ThrowIfCancellationRequested();
+            await StartCoreAsync(ct);
+        }, token);
+
+    private async Task StartCoreAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         _settings = GodotSettingsStore.Load();
         GodotSettingsStore.Validate(_settings);
         var skills = VerifySkills(_settings);
@@ -122,6 +171,7 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
             throw new InvalidOperationException("Godot canonical skills/contracts failed verification: " + skills.Message);
 
         await EnsurePythonAdapterAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         var pluginBefore = GodotPluginInstaller.Inspect(_settings);
         var pluginAfter = GodotPluginInstaller.InstallOrUpdate(_settings);
         if (!pluginBefore.Installed || !pluginBefore.Enabled)
@@ -130,9 +180,13 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
             throw new InvalidOperationException(pluginAfter.Message);
 
         await EnsureTunnelProfileAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         var selectedEditor = await GodotBridgeProbe.ProbeAsync(_settings.EditorHost, _settings.EditorPort, _settings.ProjectRoot, cancellationToken);
         if (_settings.AutoLaunchGodot && !selectedEditor.Connected && !selectedEditor.Message.Contains("another project", StringComparison.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             LaunchGodot();
+        }
         await base.StartAsync(cancellationToken);
 
         var readyEditor = await GodotBridgeProbe.ProbeAsync(_settings.EditorHost, _settings.EditorPort, _settings.ProjectRoot, cancellationToken);
@@ -149,6 +203,13 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
 
     public override async Task<string> DoctorAsync(CancellationToken cancellationToken = default)
     {
+        await _projectSwitch.WaitAsync(cancellationToken);
+        try { return await DoctorCoreAsync(cancellationToken); }
+        finally { _projectSwitch.Release(); }
+    }
+
+    private async Task<string> DoctorCoreAsync(CancellationToken cancellationToken)
+    {
         _settings = GodotSettingsStore.Load();
         if (GodotSettingsStore.ProjectIssue(_settings) is { } issue) return issue;
         var lines = new List<string>();
@@ -157,6 +218,7 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
             await EnsureTunnelProfileAsync(cancellationToken);
             lines.Add(await base.DoctorAsync(cancellationToken));
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             lines.Add("Tunnel Doctor failed: " + ex.Message);
@@ -205,7 +267,7 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
             if (!string.Equals(existing.TunnelId, _settings.TunnelId, StringComparison.Ordinal) ||
                 existing.HealthPort != _settings.HealthPort ||
                 !string.Equals(configuredCommand, expectedCommand, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException($"Existing tunnel profile '{_settings.TunnelProfile}' does not match Constantine Hub Godot settings. Remove or rename the stale profile before Setup.");
+                throw new InvalidDataException($"Existing tunnel profile '{_settings.TunnelProfile}' does not match ConHub. Godot settings. Remove or rename the stale profile before Setup.");
             return;
         }
         catch (FileNotFoundException) { }

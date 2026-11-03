@@ -77,7 +77,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
         {
             if (!_ownedTunnel.IsRunning) throw new ExternalTunnelControlException(DisplayName);
             Log("MCP server exited or became unavailable; restarting the Hub-owned tunnel.");
-            await StopAsync(cancellationToken);
+            await StopOwnedTunnelAsync(cancellationToken);
         }
         if (_ownedTunnel.IsRunning)
         {
@@ -88,7 +88,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
             var apiKey = Environment.GetEnvironmentVariable("CONTROL_PLANE_API_KEY");
             if (string.IsNullOrWhiteSpace(apiKey))
                 throw new InvalidOperationException(
-                    "CONTROL_PLANE_API_KEY is missing. Set it in Windows and restart Constantine Hub.");
+                    "CONTROL_PLANE_API_KEY is missing. Set it in Windows and restart ConHub..");
 
             var executable = ExecutableLocator.FindTunnelClient()
                 ?? throw new FileNotFoundException(
@@ -124,6 +124,9 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
     }
 
     public virtual Task StopAsync(CancellationToken cancellationToken = default)
+        => StopOwnedTunnelAsync(cancellationToken);
+
+    private Task StopOwnedTunnelAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_ownedTunnel.IsRunning)

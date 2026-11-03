@@ -31,3 +31,14 @@ obj/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Portable runtime files are distributed as release assets, never as source.
+*.exe
+*.dll
+*.pdb
+*.deps.json
+*.runtimeconfig.json
+/adapters/mcp-helper/package-manifest.json
+/adapters/mcp-helper/McpHelper.staticwebassets.endpoints.json
+/adapters/mcp-helper/web.config
+/adapters/mcp-helper/licenses/

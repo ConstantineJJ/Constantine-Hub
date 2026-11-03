@@ -6,29 +6,30 @@ internal static class Program
     private static void Main(string[] args)
     {
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-        Application.ThreadException += (_, e) => Core.ErrorReporter.Show(e.Exception, "Constantine Hub — unexpected error");
+        Application.ThreadException += (_, e) => Core.ErrorReporter.Show(e.Exception, "ConHub. — unexpected error");
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             Core.ErrorReporter.Show(e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString()),
-                "Constantine Hub — fatal error");
+                "ConHub. — fatal error");
         try
         {
             Run(args);
         }
         catch (Exception ex)
         {
-            Core.ErrorReporter.Show(ex, "Constantine Hub — startup or application error");
+            Core.ErrorReporter.Show(ex, "ConHub. — startup or application error");
             Environment.ExitCode = 1;
         }
     }
 
     private static void Run(string[] args)
     {
+        Core.TrayIdentity.Initialize();
         ApplicationConfiguration.Initialize();
 
         var options = ParseArgs(args);
         using var instance = options.ContainsKey("isolated-instance") ? null : new Core.HubInstance();
         if (instance?.ActivateExisting() == true) return;
-        using var form = new MainForm(enableTray: !options.ContainsKey("no-tray"));
+        using var form = new MainForm(enableTray: Core.TrayIdentity.ShouldEnableTray(options));
         instance?.Listen(form);
         UiPass.Apply(form);
         UiAcceptancePass.Apply(form);
@@ -52,7 +53,7 @@ internal static class Program
             {
                 MessageBox.Show(
                     form,
-                    $"Constantine Hub updated successfully: {from} → {to}",
+                    $"ConHub. updated successfully: {from} → {to}",
                     "Update complete",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);

@@ -36,7 +36,7 @@ the C# workspace, save and select **Start Helper**. **Connection** copies the en
 and authentication for your MCP client. Keep that connection data private.
 Global Start/Stop participation is opt-in in Helper configuration.
 
-Helper **0.1.2** is bundled with ConHub. **0.5.4** and is also available as a standalone
+Helper **0.1.2** is bundled with ConHub. **0.5.5** and is also available as a standalone
 `McpHelper-win-x64.zip` in the same release. It includes its own runtime and works
 without Hub or Tools_C. [Standalone usage and API](adapters/mcp-helper/README.md).
 
@@ -100,7 +100,13 @@ current identity, promotion preferences and whole system caches are never reset.
 
 ### NVIDIA App MCP
 
-The Utility card uses the supplied Jensen artwork. It reports the actual local
+The Utility card uses the six transparent PNG layers in `Assets/JensenAnimation`.
+Its happy face and effects require both the local MCP handshake and a ready tunnel;
+a starting tunnel shows a sad face with a gentle pulse, and a stopped or failed
+connection fades back to the sad face. Dollars turn around fixed normalized eye
+anchors (left counterclockwise, right clockwise), with independent rays, bursts
+and sparkles. The 30 FPS frame timer pauses when hidden, minimized or disconnected;
+it performs no connection polling. It reports the actual local
 `nvidia-app` MCP handshake and tools/list separately from tunnel readiness. Local
 HTTP stays on `127.0.0.1`; ConHub. does not launch or stop NVIDIA's external service.
 Configure the existing dedicated `constantine-nvidia` tunnel profile to enable
@@ -129,4 +135,4 @@ The existing GitHub Actions workflow builds the Hub/Updater, verifies the indepe
 Helper, exercises upgrade/recovery and packages the release. Source tests and CI
 remain in the repository; development reports and task logs are kept externally.
 
-v0.5.4 stable publication requires an explicitly approved manual workflow run after all checks. Main-branch builds do not publish a stable release automatically.
+Stable publication requires an explicitly approved manual workflow run after all checks. Main-branch builds do not publish a stable release automatically. v0.5.5 retains the update ZIP/checksum names understood by v0.5.4; the previous stable release is retained for upgrade verification.

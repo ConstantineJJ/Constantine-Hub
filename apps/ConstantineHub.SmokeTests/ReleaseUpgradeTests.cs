@@ -33,6 +33,12 @@ internal static class ReleaseUpgradeTests
         var expectedVersion = FileVersionInfo.GetVersionInfo(Path.Combine(candidate, "ConstantineHub.dll")).FileVersion;
         Check(FileVersionInfo.GetVersionInfo(Path.Combine(target, "ConstantineHub.dll")).FileVersion == expectedVersion, $"actual {previousVersion} payload upgraded to {expectedVersion}");
         Check(File.ReadAllText(Path.Combine(target, "user-settings.local.json")) == "preserve me", "upgrade preserves user installation files");
+        foreach (var name in JensenAnimationControl.AssetNames)
+        {
+            var relative = Path.Combine("Assets", "JensenAnimation", name);
+            Check(File.ReadAllBytes(Path.Combine(target, relative)).SequenceEqual(File.ReadAllBytes(Path.Combine(candidate, relative))),
+                "upgrade installs the exact new animation layer: " + name);
+        }
         var exe = Path.Combine(target, "adapters", "mcp-helper", "McpHelper.exe");
         Check(HelperPackage.Verify(exe) == "0.1.2", "upgraded installation contains complete verified Helper 0.1.2 package");
         var workspace = Path.Combine(fixture, "workspace"); Directory.CreateDirectory(workspace);

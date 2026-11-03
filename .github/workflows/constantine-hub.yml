@@ -117,6 +117,19 @@ jobs:
           if (-not (Test-Path "$root/adapters/mcp-helper/McpHelper.exe")) { throw 'MCP Helper was not bundled.' }
           if (-not (Test-Path "$root/adapters/mcp-helper/package-manifest.json")) { throw 'MCP Helper manifest was not bundled.' }
 
+      - name: Verify the six Jensen animation layers
+        shell: pwsh
+        run: |
+          $names = @('Jensen_Connected.png', 'Jensen_Disconnected.png', 'Jensen_Dollar.png', 'Jensen_RaysRing.png', 'Jensen_RaysBurst.png', 'Jensen_Sparkle.png')
+          $source = 'apps/ConstantineHub/Assets/JensenAnimation'
+          $published = 'artifacts/ConstantineHub-win-x64/Assets/JensenAnimation'
+          if (@(Get-ChildItem -LiteralPath $published -File).Count -ne 6) { throw 'Expected exactly six published animation layers.' }
+          foreach ($name in $names) {
+            if (-not (Test-Path -LiteralPath "$published/$name")) { throw "Missing animation PNG: $name" }
+            if ((Get-FileHash -LiteralPath "$source/$name").Hash -ne (Get-FileHash -LiteralPath "$published/$name").Hash) { throw "Animation PNG differs from source: $name" }
+          }
+          if (Get-ChildItem artifacts/ConstantineHub-win-x64 -Recurse -File -Filter 'Jensen with rays.png') { throw 'Legacy Jensen artwork must not be published.' }
+
       - name: Real v0.2.9 and v0.3.1 upgrade and recovery fixtures
         timeout-minutes: 4
         shell: pwsh
@@ -131,6 +144,16 @@ jobs:
           Expand-Archive artifacts/previous-031.zip artifacts/previous-031
           dotnet run --project apps/ConstantineHub.SmokeTests -c Release -- --upgrade-fixture artifacts/previous-031 artifacts/ConstantineHub-win-x64
           if ($LASTEXITCODE -ne 0) { throw 'v0.3.1 upgrade fixture failed.' }
+
+      - name: Real v0.5.4 to current upgrade and rollback
+        timeout-minutes: 2
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri 'https://github.com/ConstantineJJ/Constantine-Hub/releases/download/v0.5.4/ConstantineHub-win-x64.zip' -OutFile artifacts/previous-054.zip
+          if ((Get-FileHash artifacts/previous-054.zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne '2b3a9c5fbe4cea365f1aa6db3401234d6aff03999920fee3033f8ada158afc5a') { throw 'v0.5.4 checksum mismatch.' }
+          Expand-Archive artifacts/previous-054.zip artifacts/previous-054
+          dotnet run --project apps/ConstantineHub.SmokeTests -c Release -- --upgrade-fixture artifacts/previous-054 artifacts/ConstantineHub-win-x64
+          if ($LASTEXITCODE -ne 0) { throw 'v0.5.4 upgrade fixture failed.' }
 
       - name: Read version and package release
         shell: pwsh

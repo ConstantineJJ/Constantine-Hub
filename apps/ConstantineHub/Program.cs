@@ -29,7 +29,8 @@ internal static class Program
         var options = ParseArgs(args);
         using var instance = options.ContainsKey("isolated-instance") ? null : new Core.HubInstance();
         if (instance?.ActivateExisting() == true) return;
-        using var form = new MainForm(enableTray: Core.TrayIdentity.ShouldEnableTray(options));
+        var enableTray = Core.TrayIdentity.ShouldEnableTray(options);
+        using var form = new MainForm(enableTray: enableTray, closeToTray: enableTray);
         instance?.Listen(form);
         UiPass.Apply(form);
         UiAcceptancePass.Apply(form);

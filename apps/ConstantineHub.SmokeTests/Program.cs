@@ -89,6 +89,7 @@ internal static class Program
             NvidiaUiTests.Run(form);
             GodotRecoveryTests.Ui(form);
             WorkspaceFeaturesTests.WindowBehavior(form);
+            WorkspaceFeaturesTests.PreviewExit();
             WorkspaceFeaturesTests.Dashboard(form);
             WorkspaceFeaturesTests.FileWindow(form, fixture);
             Check(Descendants<Label>(form).Any(l => l.Text == "MCP CONNECTIONS"), "semantic connection card present");

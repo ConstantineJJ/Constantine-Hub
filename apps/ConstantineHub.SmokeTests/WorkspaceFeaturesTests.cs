@@ -33,6 +33,13 @@ internal static class WorkspaceFeaturesTests
         Check(Descendants<Button>(form).Any(b => b.Name == "AddGodotProject") && Descendants<Button>(form).Any(b => b.Name == "OpenFileInbox"), "Add project and file inbox are reachable");
     }
 
+    internal static void PreviewExit()
+    {
+        using var preview = new MainForm(enableTray: false, closeToTray: false);
+        preview.Show(); Application.DoEvents(); preview.Close(); Application.DoEvents();
+        Check(preview.IsDisposed, "No-tray review closes completely instead of leaving an invisible process");
+    }
+
     internal static void FileWindow(MainForm owner, string fixture)
     {
         var previousThreadChecks = Control.CheckForIllegalCrossThreadCalls;

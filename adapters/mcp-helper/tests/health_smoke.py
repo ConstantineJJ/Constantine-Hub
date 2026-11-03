@@ -15,7 +15,9 @@ import urllib.request
 def run(executable):
     with tempfile.TemporaryDirectory(prefix="helper-health-") as temp:
         root = Path(temp)
-        workspace = root / "workspace"
+        (root / "alias-parent").mkdir()
+        # Exercise equivalent spellings like Windows runner short temp paths.
+        workspace = root / "alias-parent" / ".." / "workspace"
         workspace.mkdir()
         # Semantic analysis would reject this file; health must not read it.
         (workspace / "Unreadable.cs").write_bytes(b"\xff\xfe\x00\x00")
@@ -54,7 +56,11 @@ def run(executable):
                     raise AssertionError("Helper health startup timed out")
                 assert status["instance_id"] == "idle-health"
                 assert status["version"] == "0.1.2"
-                assert Path(status["workspace_root"]) == workspace
+                reported = Path(status["workspace_root"])
+                assert os.path.samefile(reported, workspace), f"Helper workspace mismatch: {reported} != {workspace}"
+                other = root / "different-workspace"
+                other.mkdir()
+                assert not os.path.samefile(reported, other), "Workspace identity check accepted a different directory"
                 assert status["mcp_ready"] and not status["apply_available"]
                 for _ in range(60):
                     assert health() == status

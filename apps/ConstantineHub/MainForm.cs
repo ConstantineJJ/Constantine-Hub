@@ -42,6 +42,7 @@ internal sealed partial class MainForm : Form
     private bool _trayHintShown;
     private bool _exitRequested;
     private readonly bool _enableTray;
+    private readonly bool _closeToTray;
     internal string UpdateLogTail => string.Join(Environment.NewLine, _allLogLines.TakeLast(40));
     private FormWindowState _restoreWindowState = FormWindowState.Normal;
 
@@ -50,9 +51,10 @@ internal sealed partial class MainForm : Form
     private static readonly Color Warn = Color.FromArgb(232, 188, 104);
     private static readonly Color Muted = Color.FromArgb(170, 174, 184);
 
-    internal MainForm(bool enableTray = false)
+    internal MainForm(bool enableTray = false, bool closeToTray = true)
     {
         _enableTray = enableTray;
+        _closeToTray = closeToTray;
         Text = "ConHub.";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(1040, 980);
@@ -93,7 +95,7 @@ internal sealed partial class MainForm : Form
         Disposed += (_, _) => { _trayIcon.ContextMenuStrip?.Dispose(); _trayIcon.Dispose(); _reconnect?.Dispose(); };
         FormClosing += (_, e) =>
         {
-            if (!_exitRequested && e.CloseReason == CloseReason.UserClosing)
+            if (!_exitRequested && _closeToTray && e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;
                 HideToTray();

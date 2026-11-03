@@ -1,7 +1,7 @@
 # MCP Helper
 
 Independent, read-only C# code navigation and rename preview over MCP.
-The executable works without Constantine Hub or Tools_C. Hub optionally manages
+The executable works without ConHub. or Tools_C. Hub optionally manages
 the same service package. Version: **0.1.2**.
 
 ## Run

@@ -64,7 +64,7 @@ internal static class Program
                 startInfo.ArgumentList.Add("--updated-to");
                 startInfo.ArgumentList.Add(toVersion);
 
-                var newHub = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not restart Constantine Hub after update.");
+                var newHub = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not restart ConHub. after update.");
                 Log(logPath, $"Started updated Hub PID {newHub.Id}; waiting for startup marker.");
 
                 if (WaitForMarker(marker, TimeSpan.FromSeconds(StartupTimeoutSeconds)))
@@ -120,7 +120,7 @@ internal static class Program
             using var process = Process.GetProcessById(pid);
             Log(logPath, $"Waiting for Hub PID {pid} to exit.");
             if (!process.WaitForExit(30000))
-                throw new TimeoutException("The running Constantine Hub did not exit within 30 seconds.");
+                throw new TimeoutException("The running ConHub. did not exit within 30 seconds.");
         }
         catch (ArgumentException)
         {

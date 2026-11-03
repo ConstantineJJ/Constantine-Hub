@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.4 — 2026-11-03
+
+### Added
+- NVIDIA App MCP in Utility, with local protocol discovery, diagnostics and ownership-safe tunnel controls.
+- Opt-in ReConnect fallback: three cycles of Restart, Restart, Stop/Doctor/Start; cancel, early success and manual rearm after nine failures.
+- Stable Windows tray GUID/AppUserModelID and guarded legacy-history preview with explicit exact-entry cleanup.
+
+### Changed
+- Product display name is ConHub.; larger logo, two-color title, Home and project chooser in the top bar.
+- Keep legacy executable, archive, configuration and profile identifiers for update compatibility.
+- Stable releases require an approved manual workflow; upgrade fixtures use the real checksum-pinned v0.3.1 archive.
+
+### Fixed
+- Bound Godot traversal/encoding and MCP responses; cancel socket work and reject malformed, oversized or mismatched responses.
+- Serialize Godot lifecycle operations and terminate owned Doctor/setup children on cancellation.
+
+
 ## 0.4.4 — 2026-10-31
 
 ### Fixed

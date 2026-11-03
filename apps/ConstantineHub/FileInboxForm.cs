@@ -56,21 +56,43 @@ internal sealed class FileInboxForm : Form
         FormClosing += (_, e) => { if (_importing) { e.Cancel = true; _status.Text = "Дождитесь завершения копирования."; } };
     }
 
-    internal async Task ImportAsync(IEnumerable<string> paths)
+    internal Task ImportCompletion { get; private set; } = Task.CompletedTask;
+
+    internal Task ImportAsync(IEnumerable<string> paths)
     {
-        if (_importing) return;
-        _importing = true; _add.Enabled = false; _status.Text = "Копирование файлов…";
-        try
-        {
-            var added = await FileInbox.ImportAsync(paths);
-            RefreshFiles();
-            foreach (ListViewItem item in _files.Items) item.Selected = added.Contains((string)item.Tag!, StringComparer.OrdinalIgnoreCase);
-            _status.Text = $"Добавлено: {added.Count}. Скажите агенту, какой файл использовать и что с ним сделать.";
-        }
-        catch (Exception ex) { _status.Text = "Не удалось добавить файл: " + ex.Message; }
-        finally { _importing = false; _add.Enabled = true; }
+        if (_importing) return ImportCompletion;
+        return ImportCompletion = ImportCoreAsync(paths);
     }
 
+    private async Task ImportCoreAsync(IEnumerable<string> paths)
+    {
+        _importing = true; _add.Enabled = false; _status.Text = "Копирование файлов…";
+        IReadOnlyList<string>? added = null;
+        string? failure = null;
+        try { added = await FileInbox.ImportAsync(paths).ConfigureAwait(false); }
+        catch (Exception ex) { failure = ex.Message; }
+        if (IsDisposed || Disposing) return;
+        try
+        {
+            // A drag/drop host or a temporary message loop may not install a
+            // WinForms SynchronizationContext. Marshal the whole completion to
+            // the owning window, including selection and the enabled state.
+            await this.InvokeAsync(() =>
+            {
+                if (IsDisposed || Disposing) return;
+                try
+                {
+                    if (failure is not null) { _status.Text = "Не удалось добавить файл: " + failure; return; }
+                    RefreshFiles();
+                    foreach (ListViewItem item in _files.Items)
+                        item.Selected = added!.Contains((string)item.Tag!, StringComparer.OrdinalIgnoreCase);
+                    _status.Text = $"Добавлено: {added!.Count}. Скажите агенту, какой файл использовать и что с ним сделать.";
+                }
+                finally { _importing = false; _add.Enabled = true; }
+            }).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException) when (IsDisposed || Disposing) { }
+    }
     private void RefreshFiles()
     {
         try

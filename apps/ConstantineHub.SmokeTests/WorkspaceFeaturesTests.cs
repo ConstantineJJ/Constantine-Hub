@@ -35,6 +35,8 @@ internal static class WorkspaceFeaturesTests
 
     internal static void FileWindow(MainForm owner, string fixture)
     {
+        var previousThreadChecks = Control.CheckForIllegalCrossThreadCalls;
+        Control.CheckForIllegalCrossThreadCalls = true;
         using var inbox = new FileInboxForm();
         inbox.Show(owner); Application.DoEvents();
         var wide = inbox.Size;
@@ -42,6 +44,7 @@ internal static class WorkspaceFeaturesTests
         Check(Descendants<Button>(inbox).All(b => b.Right <= b.Parent!.ClientSize.Width && b.Bottom <= b.Parent.ClientSize.Height), "File actions wrap within the minimum window at native DPI");
         inbox.Size = wide; Application.DoEvents();
         Check(Descendants<Label>(inbox).Any(l => l.Text.StartsWith("Файлов:")), "File window lists existing inbox assets");
+        ImportWithoutSynchronizationContext(inbox, fixture);
         var source = Path.Combine(fixture, "drop.glb");
         File.WriteAllBytes(source, [0x67, 0x6c, 0x54, 0x46, 9, 8, 7]);
         var data = new DataObject(DataFormats.FileDrop, new[] { source });
@@ -51,8 +54,10 @@ internal static class WorkspaceFeaturesTests
         typeof(Control).GetMethod("OnDragDrop", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(inbox, [drag]);
         var destination = Path.Combine(FileInbox.Root, "drop.glb");
         var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (!File.Exists(destination) && DateTime.UtcNow < deadline) { Application.DoEvents(); Thread.Sleep(20); }
-        Application.DoEvents();
+        var completion = inbox.ImportCompletion;
+        while (!completion.IsCompleted && DateTime.UtcNow < deadline) { Application.DoEvents(); Thread.Sleep(20); }
+        Check(completion.IsCompleted, "Real drop handler finishes all UI work before closing the inbox");
+        completion.GetAwaiter().GetResult();
         Check(File.Exists(destination) && File.ReadAllBytes(destination).SequenceEqual(File.ReadAllBytes(source)), "Actual drop handler copies GLB bytes into shared inbox");
         Check(Descendants<ListView>(inbox).Single().Items.Cast<ListViewItem>().Any(i => i.Text == "drop.glb"), "Dropped asset appears in file window");
         var evidence = Environment.GetEnvironmentVariable("HUB_UI_EVIDENCE");
@@ -64,8 +69,35 @@ internal static class WorkspaceFeaturesTests
             bitmap.Save(Path.Combine(evidence, "file-inbox.png"));
         }
         inbox.Close();
+        Control.CheckForIllegalCrossThreadCalls = previousThreadChecks;
     }
 
+    private static void ImportWithoutSynchronizationContext(FileInboxForm inbox, string fixture)
+    {
+        var source = Path.Combine(fixture, "async-drop.bin");
+        using (var file = File.Create(source)) file.SetLength(16 * 1024 * 1024);
+        var previousContext = SynchronizationContext.Current;
+        var previousThreadChecks = Control.CheckForIllegalCrossThreadCalls;
+        try
+        {
+            Control.CheckForIllegalCrossThreadCalls = true;
+            // Application.DoEvents is a temporary message loop. Reflecting a UI event after it
+            // returns may have no installed WinForms context, unlike Application.Run in production.
+            SynchronizationContext.SetSynchronizationContext(null);
+            var import = inbox.ImportAsync([source]);
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (!import.IsCompleted && DateTime.UtcNow < deadline) { Application.DoEvents(); Thread.Sleep(10); }
+            Check(import.IsCompleted, "Inbox import completion is observable after asynchronous copy");
+            import.GetAwaiter().GetResult();
+            Check(Descendants<ListView>(inbox).Single().SelectedItems.Cast<ListViewItem>().Any(item => item.Text == "async-drop.bin"),
+                "Missing synchronization context still completes all import UI updates on the owning thread");
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+            Control.CheckForIllegalCrossThreadCalls = previousThreadChecks;
+        }
+    }
     private static IEnumerable<T> Descendants<T>(Control root) where T : Control
     {
         foreach (Control child in root.Controls)

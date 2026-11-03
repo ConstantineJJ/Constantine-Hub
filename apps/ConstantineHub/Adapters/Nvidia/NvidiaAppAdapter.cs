@@ -69,11 +69,16 @@ internal sealed class NvidiaAppAdapter : TunnelProfileAdapterBase
         if (!File.Exists(BridgeExecutable))
             throw new FileNotFoundException("NVIDIA App MCP relay is missing. Enable AI Agents and App Connections in NVIDIA App.", BridgeExecutable);
         var profile = TunnelProfile.Load("constantine-nvidia");
-        if (!string.Equals(Path.GetFullPath(Environment.ExpandEnvironmentVariables(profile.McpCommand)),
-                Path.GetFullPath(BridgeExecutable), StringComparison.OrdinalIgnoreCase))
+        if (!IsInstalledRelayCommand(profile.McpCommand))
             throw new InvalidDataException("The NVIDIA tunnel must use NVIDIA App's installed NvAppMcpServer.exe relay.");
         await base.StartAsync(cancellationToken);
         _lastProbe = default;
+    }
+
+    internal static bool IsInstalledRelayCommand(string command)
+    {
+        try { return string.Equals(TunnelProfile.CommandPath(command), Path.GetFullPath(BridgeExecutable), StringComparison.OrdinalIgnoreCase); }
+        catch (Exception ex) when (ex is ArgumentException or InvalidDataException or NotSupportedException) { return false; }
     }
 
     public override async Task<string> DoctorAsync(CancellationToken cancellationToken = default)

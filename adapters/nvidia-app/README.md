@@ -10,13 +10,16 @@ Enable **AI Agents and App Connections** in NVIDIA App. Create a separate privat
 
 ```powershell
 $tc = 'C:\PATH\TO\tunnel-client.exe'
+$relayCommand = '"C:/Program Files/NVIDIA Corporation/NVIDIA App/McpServer/NvAppMcpServer.exe"'
 & $tc init --sample sample_mcp_stdio_local --profile constantine-nvidia `
   --tunnel-id tunnel_YOUR_NVIDIA_ID --health-listen-addr 127.0.0.1:8083 `
-  --mcp-command 'C:/Program Files/NVIDIA Corporation/NVIDIA App/McpServer/NvAppMcpServer.exe'
+  --mcp-command $relayCommand
 & $tc doctor --profile constantine-nvidia --explain
 ```
 
 Use an unused loopback health port. ConHub. reads the existing `CONTROL_PLANE_API_KEY` environment variable; never paste it into logs. Start/Stop/Restart in Utility control only the Hub-owned tunnel. Start All skips NVIDIA when its dedicated profile is absent. Doctor remains available without a configured tunnel. Stopping NVIDIA App itself reports local MCP unavailable; restarting the relay never terminates unrelated NVIDIA processes.
+
+The inner double quotes in `$relayCommand` are part of the command passed to tunnel-client, whose command parser needs them for `Program Files`. PowerShell argument quoting alone does not preserve that executable boundary. Native `init` serializes the command as a double-quoted YAML scalar with escaped inner quotes; ConHub. decodes that scalar and validates the exact installed executable without accepting additional arguments. Existing plain and single-quoted profile values remain supported.
 
 Connect the private tunnel in the MCP client, verify `nvapp_*` tools are discovered, and call a read-only tool such as `nvapp_client_get_driver_status`. Successful local discovery is not evidence that a newly configured remote tunnel works; verify that separately.
 

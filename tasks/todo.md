@@ -8,6 +8,7 @@
 - [x] CI/version: 0.5.4 consistency, real checksum-pinned fixture and release approval gate.
 - [x] Local full regression, portable build, real upgrade/rollback and validation documentation.
 - [ ] Hosted PR CI verification.
-- [ ] NVIDIA dedicated tunnel and remote end-to-end verification (requires tunnel setup).
+- [x] NVIDIA dedicated profile with user-provided tunnel ID, Doctor and ten real owned lifecycle/health assertions.
+- [ ] Remote agent call through the new NVIDIA tunnel (separate from local/owned readiness).
 - [ ] Repeated normal tray launches/updates at final stable installation path and final user UI acceptance.
 - [ ] Stable release approval (not requested for automatic execution).

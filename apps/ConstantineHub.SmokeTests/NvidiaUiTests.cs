@@ -7,7 +7,7 @@ internal static class NvidiaUiTests
 {
     internal static void Run(MainForm form)
     {
-        Endpoints(); BoundedReplies(); Layout(form);
+        Endpoints(); BoundedReplies(); ProfileScalars(); Layout(form);
         var original = form.Size;
         form.Size = form.MinimumSize; Application.DoEvents(); Layout(form);
         var reconnect = Descendants<ReconnectButton>(form).Single();
@@ -22,7 +22,7 @@ internal static class NvidiaUiTests
 
     internal static async Task Live()
     {
-        Endpoints(); BoundedReplies();
+        Endpoints(); BoundedReplies(); ProfileScalars();
         using var adapter = new NvidiaAppAdapter();
         var snapshot = await adapter.GetSnapshotAsync();
         Check(snapshot.HttpAvailable && snapshot.ToolCount > 0 && snapshot.StdioBridgeInstalled,
@@ -63,6 +63,49 @@ internal static class NvidiaUiTests
             { Content = new System.Net.Http.StringContent(new string('x', 512 * 1024 + 1)) };
         try { NvidiaAppAdapter.ReadReplyAsync(oversized, CancellationToken.None).GetAwaiter().GetResult(); throw new InvalidOperationException("Oversize accepted"); }
         catch (IOException) { Check(true, "NVIDIA diagnostic rejects responses over 512 KiB"); }
+    }
+
+    private static void ProfileScalars()
+    {
+        var fixture = Path.Combine(Path.GetTempPath(), "conhub-nvidia-yaml-" + Guid.NewGuid().ToString("N") + ".yaml");
+        var oldFile = Environment.GetEnvironmentVariable("TUNNEL_CLIENT_PROFILE_FILE");
+        var relay = NvidiaAppAdapter.BridgeExecutable.Replace('\\', '/');
+        var quotedRelay = '"' + relay + '"';
+        try
+        {
+            Environment.SetEnvironmentVariable("TUNNEL_CLIENT_PROFILE_FILE", fixture);
+            foreach (var (scalar, expected) in new[] {
+                (System.Text.Json.JsonSerializer.Serialize(quotedRelay, new System.Text.Json.JsonSerializerOptions {
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }), quotedRelay),
+                (System.Text.Json.JsonSerializer.Serialize(quotedRelay), quotedRelay),
+                (System.Text.Json.JsonSerializer.Serialize(NvidiaAppAdapter.BridgeExecutable), NvidiaAppAdapter.BridgeExecutable),
+                ("'" + relay + "'", relay), (relay, relay),
+                ("'C:/Agent''s folder/relay.exe'", "C:/Agent's folder/relay.exe"),
+                ("'C:/Agent#1/relay.exe'", "C:/Agent#1/relay.exe"),
+                ("C:/Agent#1/relay.exe # trailing comment", "C:/Agent#1/relay.exe") })
+            {
+                File.WriteAllText(fixture, "tunnel_id: 'fixture_id' # retained comment\r\nchannels:\r\n  main:\r\n    command: " + scalar +
+                    "\r\nhealth:\r\n  listen_addr: \"127.0.0.1:8083\" # listener\r\n");
+                var profile = TunnelProfile.Load("nvidia-fixture");
+                Check(profile.McpCommand == expected && profile.TunnelId == "fixture_id" && profile.HealthPort == 8083,
+                    "NVIDIA tunnel profile preserves native or legacy YAML scalar: " + scalar);
+            }
+            foreach (var command in new[] { relay, quotedRelay, NvidiaAppAdapter.BridgeExecutable })
+                Check(NvidiaAppAdapter.IsInstalledRelayCommand(command), "NVIDIA accepts its exact installed relay with optional executable quotes");
+            foreach (var command in new[] { quotedRelay + " --extra", relay + " --extra", quotedRelay + " & calc.exe", "C:/other/NvAppMcpServer.exe" })
+                Check(!NvidiaAppAdapter.IsInstalledRelayCommand(command), "NVIDIA rejects another executable or relay arguments");
+            foreach (var scalar in new[] { "\"unterminated", "'unterminated", "\"valid\" unexpected", "'valid' unexpected" })
+            {
+                File.WriteAllText(fixture, "tunnel_id: fixture\ncommand: " + scalar + "\nlisten_addr: 127.0.0.1:8083\n");
+                try { TunnelProfile.Load("nvidia-fixture"); throw new InvalidOperationException("Malformed YAML scalar accepted"); }
+                catch (InvalidDataException) { Check(true, "Malformed quoted tunnel profile fails explicitly"); }
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TUNNEL_CLIENT_PROFILE_FILE", oldFile);
+            File.Delete(fixture);
+        }
     }
     internal static void Endpoints()
     {

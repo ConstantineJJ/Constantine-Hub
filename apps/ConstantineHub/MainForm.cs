@@ -90,7 +90,7 @@ internal sealed partial class MainForm : Form
             FlushLogView();
         };
         _log.VisibleChanged += (_, _) => FlushLogView();
-        Disposed += (_, _) => { _trayIcon.Dispose(); _reconnect?.Dispose(); };
+        Disposed += (_, _) => { _trayIcon.ContextMenuStrip?.Dispose(); _trayIcon.Dispose(); _reconnect?.Dispose(); };
         FormClosing += (_, e) =>
         {
             if (!_exitRequested && e.CloseReason == CloseReason.UserClosing)

@@ -37,6 +37,11 @@ internal static class Program
             NvidiaUiTests.Live().GetAwaiter().GetResult();
             return 0;
         }
+        if (args is ["--nvidia-managed", var nvidiaTunnelId])
+        {
+            NvidiaManagedTests.RunAsync(nvidiaTunnelId).GetAwaiter().GetResult();
+            return 0;
+        }
         if (args is ["--replay-logs", var firstLog, var secondLog])
         {
             LogReplayDiagnostics.Run([firstLog, secondLog]);

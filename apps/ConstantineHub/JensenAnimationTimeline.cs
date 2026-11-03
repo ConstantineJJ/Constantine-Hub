@@ -41,7 +41,8 @@ internal sealed class JensenAnimationTimeline
         var glow = Lerp(_fromGlow, glowTarget, progress);
         var elapsed = Math.Max(0, now - _connectedAt);
         var burstAge = elapsed < 1.2 ? elapsed : elapsed % 7;
-        var burstStrength = elapsed < 1.2 ? 1f : .38f;
+        // The first flash also passes through the connection fade; compensate for that envelope.
+        var burstStrength = elapsed < 1.2 ? 1.6f : .25f;
         return new(connection, glow, (float)(-now * 63 % 360), (float)(now * 79 % 360),
             (float)(now * 17 % 360), 1 + .035f * (float)Math.Sin(now * 1.7),
             .67f + .13f * (float)Math.Sin(now * 2.1 + .8), (float)burstAge, burstStrength, now);

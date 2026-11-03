@@ -39,6 +39,11 @@ internal static class JensenAnimationTests
             "Left dollar rotates counterclockwise; right dollar rotates clockwise");
         Check(timeline.Sample(3.7).BurstStrength > timeline.Sample(10.7).BurstStrength,
             "Initial burst is stronger than periodic bursts");
+        float BurstOpacity(JensenAnimationFrame frame) => frame.Connection * frame.BurstStrength
+            * MathF.Pow(Math.Max(0, 1 - frame.BurstAge / 1.2f), 2);
+        var initialPeak = Enumerable.Range(0, 25).Max(i => BurstOpacity(timeline.Sample(3 + i * .05)));
+        var periodicPeak = Enumerable.Range(0, 25).Max(i => BurstOpacity(timeline.Sample(10 + i * .05)));
+        Check(initialPeak > periodicPeak, "Connection flash remains stronger after applying the connection fade");
         timeline.SetState(JensenConnectionState.Disconnected, 5);
         Check(timeline.Sample(5).Connection == 1 && timeline.Sample(5.3).Connection is > 0 and < 1
             && timeline.Sample(5.7).Connection == 0, "Lost connection fades all connected layers out");

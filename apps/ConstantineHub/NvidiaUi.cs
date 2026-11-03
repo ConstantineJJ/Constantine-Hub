@@ -130,8 +130,8 @@ internal sealed partial class MainForm
     {
         _latestNvidia = await _nvidia.GetSnapshotAsync(cancellationToken);
         if (IsDisposed || Disposing) return;
-        _nvidiaArt?.SetConnectionState(_nvidiaConnectionOperations > 0 ? JensenConnectionState.Connecting
-            : JensenAnimationControl.ConnectionState(_latestNvidia));
+        if (_nvidiaConnectionOperations > 0) _nvidiaArt?.SetConnectionState(JensenConnectionState.Connecting);
+        else _nvidiaArt?.SetSnapshot(_latestNvidia);
         _nvidiaLocal.Text = _latestNvidia.HttpAvailable ? $"Local MCP ready · {_latestNvidia.ToolCount} tools" : "Local MCP unavailable";
         _nvidiaLocal.ForeColor = _latestNvidia.HttpAvailable ? Good : Warn;
         _nvidiaTunnel.Text = _latestNvidia.TunnelStatus.Summary;

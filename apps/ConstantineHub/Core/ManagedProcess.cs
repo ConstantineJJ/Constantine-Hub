@@ -5,15 +5,23 @@ namespace ConstantineHub.Core;
 internal sealed class ManagedProcess : IDisposable
 {
     private Process? _process;
+    private readonly object _outputGate = new();
     private readonly Action<string> _log;
+    private readonly Func<Process, bool> _stop;
 
-    internal ManagedProcess(Action<string> log)
+    internal ManagedProcess(Action<string> log, Func<Process, bool>? stop = null)
     {
         _log = log;
+        _stop = stop ?? (process =>
+        {
+            process.Kill(entireProcessTree: true);
+            return process.WaitForExit(3000);
+        });
     }
 
     internal bool IsRunning => _process is { HasExited: false };
     internal int? ProcessId => IsRunning ? _process!.Id : null;
+    internal event Action? Started;
 
     internal bool Start(string executable, IEnumerable<string> arguments)
     {
@@ -42,13 +50,11 @@ internal sealed class ManagedProcess : IDisposable
             var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
             process.OutputDataReceived += (_, e) =>
             {
-                if (!string.IsNullOrWhiteSpace(e.Data))
-                    _log(e.Data);
+                ForwardOutput(process, e.Data, "");
             };
             process.ErrorDataReceived += (_, e) =>
             {
-                if (!string.IsNullOrWhiteSpace(e.Data))
-                    _log("ERR: " + e.Data);
+                ForwardOutput(process, e.Data, "ERR: ");
             };
             process.Exited += (_, _) =>
             {
@@ -62,7 +68,11 @@ internal sealed class ManagedProcess : IDisposable
                 return false;
             }
 
-            _process = process;
+            lock (_outputGate)
+            {
+                _process = process;
+                Started?.Invoke();
+            }
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
             _log($"Started PID {process.Id}: {executable} {string.Join(" ", psi.ArgumentList)}");
@@ -71,36 +81,52 @@ internal sealed class ManagedProcess : IDisposable
         catch (Exception ex)
         {
             _log("Failed to start process: " + ex.Message);
-            _process?.Dispose();
-            _process = null;
+            // Attaching log readers can fail after process creation. Retain ownership.
+            if (!IsRunning)
+            {
+                _process?.Dispose();
+                lock (_outputGate) _process = null;
+            }
             return false;
         }
     }
 
     internal void Stop()
     {
-        if (!IsRunning)
-            return;
+        var process = _process;
+        if (process is null) return;
 
         try
         {
-            var pid = _process!.Id;
-            _process.Kill(entireProcessTree: true);
-            if (!_process.WaitForExit(3000))
-                _log($"PID {pid} did not exit within 3 seconds after Kill().");
-            else
-                _log($"Stopped owned process PID {pid}.");
+            var pid = process.Id;
+            if (!process.HasExited && (!_stop(process) || !process.HasExited))
+                throw new TimeoutException($"PID {pid} exit was not confirmed after Stop().");
+            _log($"Stopped owned process PID {pid}.");
         }
         catch (Exception ex)
         {
-            _log("Failed to stop owned process: " + ex.Message);
+            _log("Failed to stop owned process; ownership retained: " + ex.Message);
+            throw new InvalidOperationException("Owned process stop was not confirmed; replacement was not started.", ex);
         }
-        finally
+        // Drain in-flight callbacks before the next generation resets readiness.
+        lock (_outputGate) _process = null;
+        process.Dispose();
+    }
+
+    private void ForwardOutput(Process process, string? line, string prefix)
+    {
+        lock (_outputGate)
         {
-            _process?.Dispose();
-            _process = null;
+            if (ReferenceEquals(_process, process) && !string.IsNullOrWhiteSpace(line))
+                _log(prefix + line);
         }
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        try { Stop(); }
+        // Explicit Stop reports failure to its caller. Closing the application
+        // must still attempt cleanup of the remaining independent adapters.
+        catch (InvalidOperationException) { }
+    }
 }

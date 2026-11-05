@@ -501,7 +501,7 @@ internal sealed partial class MainForm : Form
             SetOptionalStatus(_godotRuntime, godot.RuntimeBridgeConnected,
                 godot.RuntimeBridgeConnected
                     ? $"Connected {_godot.Settings.RuntimeHost}:{_godot.Settings.RuntimePort}"
-                    : "Idle / runtime not running");
+                    : godot.RuntimeBridgeIssue ?? "Runtime bridge unavailable; the game may be stopped.");
             SetState(_godotTunnel, godot.TunnelStatus.State, godot.TunnelStatus.Summary);
             UpdateTunnelActions(_godot.Id, godot.TunnelStatus.State);
             await RefreshNvidiaAsync();
@@ -544,6 +544,7 @@ internal sealed partial class MainForm : Form
 
     private async Task StopAllOwnedAsync()
     {
+        StopReconnectForUserStop();
         Log("Stop Hub-Owned requested. External/adopted tunnels will be left untouched.");
         if (HelperInGlobalActions()) await RunAdapterActionQuietAsync("Stop MCP Helper", _helper.StopAsync);
         await RunAdapterActionQuietAsync("Stop Godot MCP", _godot.StopAsync);
@@ -557,6 +558,7 @@ internal sealed partial class MainForm : Form
         string title,
         Func<CancellationToken, Task> action)
     {
+        StopReconnectForUserAction(action);
         try
         {
             Log(title + " requested.");
@@ -579,6 +581,7 @@ internal sealed partial class MainForm : Form
         string title,
         Func<CancellationToken, Task> action)
     {
+        StopReconnectForUserAction(action);
         try
         {
             Log(title + " requested.");

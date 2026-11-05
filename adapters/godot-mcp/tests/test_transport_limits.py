@@ -86,6 +86,19 @@ class TransportLimitsTests(unittest.TestCase):
             self.bridge.call("scene_tree")
         self.assertLess(time.monotonic() - start, 0.7)
 
+    def test_async_timeout_reports_component_operation_endpoint_and_deadline(self):
+        self.mode = "slow"
+        async def run():
+            with self.assertRaises(BridgeError) as caught:
+                await self.bridge.acall("call_method")
+            message = str(caught.exception)
+            self.assertIn("fixture bridge call_method at 127.0.0.1:", message)
+            self.assertIn("TimeoutError", message)
+            self.assertIn("0.2", message)
+            self.mode = "healthy"
+            self.assertEqual(await self.bridge.acall("status"), {"healthy": True})
+        asyncio.run(run())
+
     def test_cancelled_async_request_closes_socket_and_status_still_works(self):
         async def run():
             self.mode = "slow"

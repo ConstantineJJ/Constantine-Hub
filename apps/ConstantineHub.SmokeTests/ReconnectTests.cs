@@ -4,7 +4,11 @@ namespace ConstantineHub.SmokeTests;
 
 internal static class ReconnectTests
 {
-    internal static void Run() => RunAsync().GetAwaiter().GetResult();
+    internal static void Run()
+    {
+        ManagedProcessRecoveryTests.Run();
+        RunAsync().GetAwaiter().GetResult();
+    }
 
     private static async Task RunAsync()
     {
@@ -57,8 +61,22 @@ internal static class ReconnectTests
         Check(calls.Count == 1 && !cancelled.Enabled && cancelled.Attempts == 0,
             "concurrent checks serialize and disabling cancels the active operation");
         Check(!ReconnectFallback.IsCriticalConnectionLog("MCP tool failed: invalid argument -32603") &&
-            ReconnectFallback.IsCriticalConnectionLog("read |0: file already closed"),
+            !ReconnectFallback.IsCriticalConnectionLog("Node not found: MortarAmmoPickups") &&
+            ReconnectFallback.IsCriticalConnectionLog("read |0: file already closed") &&
+            ReconnectFallback.IsCriticalConnectionLog("stdio MCP command exited; tunnel-client remains running in degraded mode"),
             "ordinary tool errors do not signal connection failure");
+
+        probes = 0;
+        var messages = new List<string>();
+        using var diagnosed = new ReconnectFallback(_ => Task.FromResult(++probes >= 3),
+            (_, _) => Task.CompletedTask, (_, _) => Task.CompletedTask,
+            () => "Runtime bridge: timed out; MCP readiness inferred, not an MCP roundtrip.");
+        diagnosed.LogLine += messages.Add;
+        diagnosed.Enable();
+        await diagnosed.CheckAsync();
+        Check(diagnosed.State == ReconnectState.Observing && messages.Count(m => m.Contains("restored")) == 1 &&
+            messages.Last().Contains("tunnel/editor") && messages.Last().Contains("Runtime bridge: timed out"),
+            "restoration logs exactly once and identifies the checks and separate runtime failure");
     }
 
     private static void Check(bool ok, string message)

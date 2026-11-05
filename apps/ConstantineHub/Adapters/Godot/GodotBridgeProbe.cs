@@ -13,10 +13,12 @@ internal static class GodotBridgeProbe
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(800);
+        var connected = false;
         try
         {
             using var client = new TcpClient();
             await client.ConnectAsync(host, port, timeout.Token);
+            connected = true;
             await using var stream = client.GetStream();
             var id = Guid.NewGuid().ToString("N");
             var request = JsonSerializer.Serialize(new { id, op = "status", @params = new { } });
@@ -44,8 +46,10 @@ internal static class GodotBridgeProbe
             return new(true, $"Connected {host}:{port}", reported);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        { return new(false, $"Bridge {host}:{port} is not responding."); }
-        catch (Exception ex) when (ex is SocketException or IOException or JsonException or InvalidOperationException or ArgumentException)
-        { return new(false, $"Bridge {host}:{port} is offline or invalid."); }
+        { return new(false, $"Bridge {host}:{port} timed out {(connected ? "waiting for status" : "connecting")} (800 ms)."); }
+        catch (SocketException ex)
+        { return new(false, $"Bridge {host}:{port} connection failed ({ex.SocketErrorCode})."); }
+        catch (Exception ex) when (ex is IOException or JsonException or InvalidOperationException or ArgumentException)
+        { return new(false, $"Bridge {host}:{port} returned an invalid or incomplete status ({ex.GetType().Name})."); }
     }
 }

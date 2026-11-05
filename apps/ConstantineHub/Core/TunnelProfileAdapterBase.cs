@@ -1,13 +1,17 @@
+using System.Text.Json;
+
 namespace ConstantineHub.Core;
 
 internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
 {
     private readonly ManagedProcess _ownedTunnel;
+    private int _stdioExited;
 
     protected TunnelProfileAdapterBase(string profileName)
     {
         ProfileName = profileName;
-        _ownedTunnel = new ManagedProcess(Log);
+        _ownedTunnel = new ManagedProcess(ObserveTunnelLog);
+        _ownedTunnel.Started += () => Interlocked.Exchange(ref _stdioExited, 0);
     }
 
     protected string ProfileName { get; }
@@ -22,9 +26,40 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
     protected void Log(string message)
         => LogLine?.Invoke($"[{DateTime.Now:HH:mm:ss}] {DisplayName}: {message}");
 
+    private void ObserveTunnelLog(string message)
+    {
+        // Only the current process's structured terminal event is authoritative.
+        // Tool errors and transient network failures must not poison readiness.
+        if (message.StartsWith('{'))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(message);
+                var root = document.RootElement;
+                if (root.ValueKind == JsonValueKind.Object &&
+                    root.TryGetProperty("component", out var component) && component.ValueKind == JsonValueKind.String && component.ValueEquals("mcpclient") &&
+                    root.TryGetProperty("transport", out var transport) && transport.ValueKind == JsonValueKind.String && transport.ValueEquals("stdio") &&
+                    root.TryGetProperty("msg", out var msg) && msg.ValueKind == JsonValueKind.String &&
+                    msg.ValueEquals("stdio MCP command exited; tunnel-client remains running in degraded mode"))
+                    Interlocked.Exchange(ref _stdioExited, 1);
+            }
+            catch (JsonException) { }
+        }
+        Log(message);
+    }
+
+    private async Task<TunnelRuntimeStatus> ProbeRuntimeAsync(CancellationToken token)
+    {
+        var runtime = await TunnelRuntimeProbe.ProbeAsync(ProfileName, token);
+        return runtime.State == TunnelRuntimeState.RunningExpected && _ownedTunnel.IsRunning && Volatile.Read(ref _stdioExited) != 0
+            ? runtime with { State = TunnelRuntimeState.McpUnavailable,
+                Message = "Tunnel is running, but its current stdio MCP command reported exit. Restart the tunnel to restore MCP calls." }
+            : runtime;
+    }
+
     public virtual async Task<AdapterStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        var runtime = await TunnelRuntimeProbe.ProbeAsync(ProfileName, cancellationToken);
+        var runtime = await ProbeRuntimeAsync(cancellationToken);
         var details = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Profile"] = ProfileName,
@@ -60,7 +95,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
 
     public virtual async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        var initial = await TunnelRuntimeProbe.ProbeAsync(ProfileName, cancellationToken);
+        var initial = await ProbeRuntimeAsync(cancellationToken);
         if (initial.State == TunnelRuntimeState.RunningExpected)
         {
             Log(_ownedTunnel.IsRunning
@@ -104,7 +139,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
             await Task.Delay(350, cancellationToken);
-            last = await TunnelRuntimeProbe.ProbeAsync(ProfileName, cancellationToken);
+            last = await ProbeRuntimeAsync(cancellationToken);
             if (last.State == TunnelRuntimeState.RunningExpected)
             {
                 Log("Tunnel reached ready state.");

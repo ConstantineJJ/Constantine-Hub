@@ -7,7 +7,11 @@ namespace ConstantineHub.SmokeTests;
 
 internal static class GodotRecoveryTests
 {
-    internal static void Run() => Task.Run(SerializesAndCancelsAsync).GetAwaiter().GetResult();
+    internal static void Run() => Task.Run(async () =>
+    {
+        await GodotDiagnosticsTests.RunAsync();
+        await SerializesAndCancelsAsync();
+    }).GetAwaiter().GetResult();
 
     private static async Task SerializesAndCancelsAsync()
     {
@@ -131,6 +135,11 @@ internal static class GodotRecoveryTests
         var toggle = header.Controls.OfType<Button>().Single(button => button.Text is "⌄" or "⌃");
         Check(reconnect.Visible && reconnect.Enabled && reconnect.AccessibleName!.Contains("off"),
             "ReConnect is initially off and accessible from the visible Godot header");
+        var fallback = (ReconnectFallback)typeof(MainForm).GetField("_reconnect", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
+        var godot = (GodotAdapter)typeof(MainForm).GetField("_godot", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(form)!;
+        fallback.Enable();
+        form.RunAdapterActionQuietAsync("Stop Godot MCP", godot.StopAsync).GetAwaiter().GetResult();
+        Check(!fallback.Enabled, "explicit Godot Stop disarms ReConnect before stopping the tunnel");
         var initialToggle = toggle.Text;
         toggle.PerformClick();
         Application.DoEvents();

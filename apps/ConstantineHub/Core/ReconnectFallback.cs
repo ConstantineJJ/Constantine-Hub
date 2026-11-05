@@ -7,7 +7,8 @@ internal enum ReconnectState { Observing, Recovering, Waiting }
 internal sealed class ReconnectFallback(
     Func<CancellationToken, Task<bool>> connected,
     Func<bool, CancellationToken, Task> recover,
-    Func<TimeSpan, CancellationToken, Task>? delay = null) : IDisposable
+    Func<TimeSpan, CancellationToken, Task>? delay = null,
+    Func<string>? restoredDetails = null) : IDisposable
 {
     private readonly Func<TimeSpan, CancellationToken, Task> _delay = delay ?? Task.Delay;
     private CancellationTokenSource? _session;
@@ -40,7 +41,7 @@ internal sealed class ReconnectFallback(
     }
 
     internal static bool IsCriticalConnectionLog(string line) =>
-        new[] { "file already closed", "MCP server exited", "Received response without valid ID",
+        new[] { "file already closed", "MCP server exited", "stdio MCP command exited; tunnel-client remains running in degraded mode", "Received response without valid ID",
             "failed to post response to control plane", "connection reset", "broken pipe" }
         .Any(marker => line.Contains(marker, StringComparison.OrdinalIgnoreCase));
 
@@ -102,7 +103,8 @@ internal sealed class ReconnectFallback(
     {
         Attempts = 0;
         State = ReconnectState.Observing;
-        LogLine?.Invoke("Godot connection restored; monitoring.");
+        LogLine?.Invoke("Godot tunnel/editor checks restored; monitoring. " +
+            (restoredDetails?.Invoke() ?? "MCP readiness is inferred from tunnel status; runtime availability is separate."));
         Changed?.Invoke();
     }
 

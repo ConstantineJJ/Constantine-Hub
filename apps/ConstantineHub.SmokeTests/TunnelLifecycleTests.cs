@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Reflection;
 using ConstantineHub.Core;
 
 namespace ConstantineHub.SmokeTests;
@@ -24,6 +25,16 @@ internal static class TunnelLifecycleTests
                 var request = reader.ReadLine();
                 if (request is null) continue; // A TCP-only readiness probe.
                 var fault = File.Exists(profile.ProfilePath + ".fault") ? File.ReadAllText(profile.ProfilePath + ".fault") : "";
+                if (fault is "terminal" or "tool-error" && !File.Exists(profile.ProfilePath + ".emitted"))
+                {
+                    File.WriteAllText(profile.ProfilePath + ".emitted", "");
+                    Console.WriteLine(JsonSerializer.Serialize(new
+                    {
+                        component = fault == "terminal" ? "mcpclient" : "tool",
+                        transport = "stdio",
+                        msg = "stdio MCP command exited; tunnel-client remains running in degraded mode"
+                    }));
+                }
                 var body = request.Contains("/api/status") ? JsonSerializer.Serialize(new
                 {
                     control_plane_tunnel_id = profile.TunnelId,
@@ -99,6 +110,31 @@ internal static class TunnelLifecycleTests
             adapter.StartAsync().GetAwaiter().GetResult();
             var firstPid = adapter.Pid;
             Require(firstPid is not null && adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Running, "Hub-owned Start reaches readiness");
+            File.WriteAllText(profilePath + ".fault", "tool-error");
+            adapter.GetStatusAsync().GetAwaiter().GetResult();
+            Thread.Sleep(80);
+            Require(adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Running,
+                "tool text resembling a terminal event cannot degrade a healthy tunnel");
+            File.Delete(profilePath + ".emitted");
+            File.WriteAllText(profilePath + ".fault", "terminal");
+            var failureDeadline = DateTime.UtcNow.AddSeconds(2);
+            while (adapter.GetStatusAsync().GetAwaiter().GetResult().State != AdapterState.Degraded && DateTime.UtcNow < failureDeadline)
+                Thread.Sleep(20);
+            Require(adapter.Pid == firstPid && adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Degraded,
+                "authoritative stdio exit overrides a live wrapper PID and stale green health");
+            File.Delete(profilePath + ".fault");
+            Require(adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Degraded,
+                "terminal failure stays degraded until the owned process is replaced");
+            var managed = (ManagedProcess)typeof(TunnelProfileAdapterBase).GetField("_ownedTunnel", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(adapter)!;
+            var oldProcess = (Process)typeof(ManagedProcess).GetField("_process", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(managed)!;
+            adapter.StartAsync().GetAwaiter().GetResult();
+            Require(adapter.Pid != firstPid && adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Running,
+                "fresh owned process clears the prior terminal failure and restores readiness");
+            typeof(ManagedProcess).GetMethod("ForwardOutput", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(managed,
+                [oldProcess, "{\"component\":\"mcpclient\",\"transport\":\"stdio\",\"msg\":\"stdio MCP command exited; tunnel-client remains running in degraded mode\"}", ""]);
+            Require(adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Running,
+                "late terminal output from the previous process cannot degrade its replacement");
+            firstPid = adapter.Pid;
             File.WriteAllText(profilePath + ".dead", "");
             Require(adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Degraded,
                 "Hub-owned tunnel reports a dead MCP child as degraded");

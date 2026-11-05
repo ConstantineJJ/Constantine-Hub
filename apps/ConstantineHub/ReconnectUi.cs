@@ -1,4 +1,5 @@
 using System.Drawing.Imaging;
+using ConstantineHub.Adapters.Godot;
 using ConstantineHub.Core;
 
 namespace ConstantineHub;
@@ -10,11 +11,17 @@ internal sealed partial class MainForm
 
     private void InitializeReconnect()
     {
+        GodotAdapterSnapshot? latest = null;
         _reconnect = new ReconnectFallback(async token =>
         {
             var snapshot = await _godot.GetSnapshotAsync(token);
-            return snapshot.EditorBridgeConnected && snapshot.TunnelStatus.State is AdapterState.Running or AdapterState.External;
-        }, _godot.RecoverAsync);
+            latest = snapshot;
+            return snapshot.RecoveryChecksPassed;
+        }, _godot.RecoverAsync, restoredDetails: () =>
+            "Tunnel identity/channel/PID checks passed; editor project identity responded. " +
+            "MCP readiness is inferred, not an MCP roundtrip. Runtime bridge: " +
+            (latest?.RuntimeBridgeConnected == true ? "responded for the selected project." :
+                (latest?.RuntimeBridgeIssue ?? "not checked") + " Runtime is optional when the game is stopped."));
         _reconnect.LogLine += message => Log("ReConnect: " + message);
         _godot.LogLine += _reconnect.ObserveLog;
         _reconnect.Changed += () =>
@@ -22,6 +29,19 @@ internal sealed partial class MainForm
             if (IsDisposed || Disposing) return;
             _reconnectButton?.SetState(_reconnect.Enabled, _reconnect.State, _reconnect.Attempts);
         };
+    }
+
+    private void StopReconnectForUserAction(Func<CancellationToken, Task> action)
+    {
+        if (action.Target is GodotAdapter && action.Method.Name == nameof(IHubAdapter.StopAsync))
+            StopReconnectForUserStop();
+    }
+
+    private void StopReconnectForUserStop()
+    {
+        if (_reconnect?.Enabled != true) return;
+        _reconnect.Disable();
+        Log("ReConnect disabled by explicit Godot Stop.");
     }
 
     internal Control CreateReconnectButton()

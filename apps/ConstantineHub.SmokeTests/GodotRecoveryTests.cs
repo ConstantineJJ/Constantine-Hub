@@ -7,7 +7,11 @@ namespace ConstantineHub.SmokeTests;
 
 internal static class GodotRecoveryTests
 {
-    internal static void Run() => Task.Run(SerializesAndCancelsAsync).GetAwaiter().GetResult();
+    internal static void Run() => Task.Run(async () =>
+    {
+        await GodotDiagnosticsTests.RunAsync();
+        await SerializesAndCancelsAsync();
+    }).GetAwaiter().GetResult();
 
     private static async Task SerializesAndCancelsAsync()
     {

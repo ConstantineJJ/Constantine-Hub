@@ -177,12 +177,17 @@ internal sealed partial class MainForm
         SetBridgeRow("local-files", local.State, local.Summary);
         SetBridgeRow("blender", blender.TunnelStatus.State, blender.BridgeConnected ? "bridge online" : "bridge offline");
         SetBridgeRow("godot", godot.TunnelStatus.State, godot.Configured
-            ? $"editor {(godot.EditorBridgeConnected ? "online" : "offline")} / runtime {(godot.RuntimeBridgeConnected ? "online" : "idle")}"
+            ? $"editor {(godot.EditorBridgeConnected ? "online" : "offline")} / runtime {(godot.RuntimeBridgeConnected ? "online" : "unavailable")}"
             : godot.Plugin.Message);
+        if (_bridgeRows.TryGetValue("godot", out var diagnosticsRow))
+            _tunnelActionTips.SetToolTip(diagnosticsRow.Status,
+                "Tunnel: " + godot.TunnelStatus.Summary + Environment.NewLine +
+                "Editor: " + (godot.EditorBridgeIssue ?? "connected") + Environment.NewLine +
+                "Runtime: " + (godot.RuntimeBridgeIssue ?? "connected") + Environment.NewLine +
+                "Runtime is optional when the game is stopped.");
         if (!godot.EditorBridgeConnected && _bridgeRows.TryGetValue("godot", out var godotRow))
         {
             godotRow.Status.ForeColor = Warn;
-            _tunnelActionTips.SetToolTip(godotRow.Status, godot.EditorBridgeIssue ?? "Editor bridge is offline.");
         }
         if (_latestHelper is not null) SetBridgeRow("mcp-helper", _latestHelper.State, _latestHelper.Summary);
     }

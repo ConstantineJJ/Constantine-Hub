@@ -2,6 +2,7 @@ using ConstantineHub.Adapters.Blender;
 using ConstantineHub.Adapters.Godot;
 using ConstantineHub.Adapters.LocalFiles;
 using ConstantineHub.Core;
+using System.Reflection;
 
 namespace ConstantineHub;
 
@@ -501,7 +502,7 @@ internal sealed partial class MainForm : Form
             SetOptionalStatus(_godotRuntime, godot.RuntimeBridgeConnected,
                 godot.RuntimeBridgeConnected
                     ? $"Connected {_godot.Settings.RuntimeHost}:{_godot.Settings.RuntimePort}"
-                    : "Idle / runtime not running");
+                    : godot.RuntimeBridgeIssue ?? "Runtime bridge unavailable; the game may be stopped.");
             SetState(_godotTunnel, godot.TunnelStatus.State, godot.TunnelStatus.Summary);
             UpdateTunnelActions(_godot.Id, godot.TunnelStatus.State);
             await RefreshNvidiaAsync();
@@ -852,6 +853,8 @@ internal sealed partial class MainForm : Form
 
     private static string GetDisplayVersion()
     {
+        var informational = typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational)) return informational.Split('+')[0];
         var version = typeof(MainForm).Assembly.GetName().Version;
         return version is null ? "0.1.0" : $"{version.Major}.{version.Minor}.{version.Build}";
     }

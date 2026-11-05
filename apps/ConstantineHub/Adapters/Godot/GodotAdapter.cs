@@ -15,7 +15,12 @@ internal sealed record GodotAdapterSnapshot(
     bool SkillsOk,
     AdapterStatus TunnelStatus,
     string? EditorBridgeIssue = null,
-    string? RuntimeBridgeIssue = null);
+    string? RuntimeBridgeIssue = null)
+{
+    // Runtime is optional when the game is stopped. This is not an MCP roundtrip.
+    internal bool RecoveryChecksPassed => EditorBridgeConnected &&
+        TunnelStatus.State is AdapterState.Running or AdapterState.External;
+}
 
 internal sealed class GodotAdapter : TunnelProfileAdapterBase
 {
@@ -27,20 +32,25 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
 
     public override string Id => "godot";
     public override string DisplayName => "Godot MCP";
+    // tunnel-client main stdio shares one reader. Parallel response forwarding
+    // can consume another request's ID and close the entire pipe (see review).
+    protected override IReadOnlyList<string> TunnelRunArguments =>
+        [.. base.TunnelRunArguments, "--mcp.max-concurrent-requests", "1"];
     internal GodotSettings Settings => _settings;
 
     internal async Task<GodotAdapterSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)
     {
-        _settings = GodotSettingsStore.Load();
-        var plugin = GodotPluginInstaller.Inspect(_settings);
-        var skills = VerifySkills(_settings);
+        var settings = GodotSettingsStore.Load();
+        _settings = settings;
+        var plugin = GodotPluginInstaller.Inspect(settings);
+        var skills = VerifySkills(settings);
         var tunnel = await base.GetStatusAsync(cancellationToken);
-        if (GodotSettingsStore.ProjectIssue(_settings) is { } issue)
-            return new(false, _settings.ProjectRoot, plugin, false, ExecutableLocator.FindGodot(_settings.GodotExecutable),
+        if (GodotSettingsStore.ProjectIssue(settings) is { } issue)
+            return new(false, settings.ProjectRoot, plugin, false, ExecutableLocator.FindGodot(settings.GodotExecutable),
                 false, false, skills.Message, skills.Success, tunnel, issue, issue);
-        var editor = await GodotBridgeProbe.ProbeAsync(_settings.EditorHost, _settings.EditorPort, _settings.ProjectRoot, cancellationToken);
-        var runtime = await GodotBridgeProbe.ProbeAsync(_settings.RuntimeHost, _settings.RuntimePort, _settings.ProjectRoot, cancellationToken);
-        return new(true, _settings.ProjectRoot, plugin, editor.Connected, ExecutableLocator.FindGodot(_settings.GodotExecutable), editor.Connected, runtime.Connected, skills.Message, skills.Success, tunnel,
+        var editor = await GodotBridgeProbe.ProbeAsync(settings.EditorHost, settings.EditorPort, settings.ProjectRoot, cancellationToken);
+        var runtime = await GodotBridgeProbe.ProbeAsync(settings.RuntimeHost, settings.RuntimePort, settings.ProjectRoot, cancellationToken);
+        return new(true, settings.ProjectRoot, plugin, editor.Connected, ExecutableLocator.FindGodot(settings.GodotExecutable), editor.Connected, runtime.Connected, skills.Message, skills.Success, tunnel,
             editor.Connected ? null : editor.Message, runtime.Connected ? null : runtime.Message);
     }
 
@@ -93,8 +103,8 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
         details["Project"] = snapshot.ProjectRoot;
         details["Plugin"] = snapshot.Plugin.Message;
         details["Godot"] = snapshot.GodotRunning ? "running" : "stopped";
-        details["Editor bridge"] = snapshot.EditorBridgeConnected ? $"connected {_settings.EditorHost}:{_settings.EditorPort}" : "not connected";
-        details["Runtime bridge"] = snapshot.RuntimeBridgeConnected ? $"connected {_settings.RuntimeHost}:{_settings.RuntimePort}" : "not connected";
+        details["Editor bridge"] = snapshot.EditorBridgeConnected ? "connected (selected project)" : snapshot.EditorBridgeIssue ?? "not connected";
+        details["Runtime bridge"] = snapshot.RuntimeBridgeConnected ? "connected (selected project)" : snapshot.RuntimeBridgeIssue ?? "not connected";
         details["Skills"] = snapshot.SkillsSummary;
 
         if (!snapshot.Configured && snapshot.TunnelStatus.State is AdapterState.Stopped or AdapterState.NotConfigured)
@@ -152,7 +162,7 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
             ct = deadline.Token;
             // Recheck after waiting for a main-module Restart/project switch.
             var snapshot = await GetSnapshotAsync(ct);
-            if (snapshot.EditorBridgeConnected && snapshot.TunnelStatus.State is AdapterState.Running or AdapterState.External) return;
+            if (snapshot.RecoveryChecksPassed) return;
             if (!alternate) { await RestartCoreAsync(ct); return; }
             await EnsureRecoveryOwnershipAsync(ct);
             await base.StopAsync(ct);

@@ -120,18 +120,20 @@ class JsonLineBridge:
 
     async def _acall(self, op: str, *, timeout: float | None = None, **params: Any) -> Any:
         request_id, raw = self._request(op, params)
+        request_timeout = self.timeout if timeout is None else timeout
         writer: asyncio.StreamWriter | None = None
         try:
             # One disposable socket per request: cancellation/disconnect cannot
             # leave a pending response to be mistaken for a later request.
-            async with asyncio.timeout(self.timeout if timeout is None else timeout):
+            async with asyncio.timeout(request_timeout):
                 reader, writer = await asyncio.open_connection(self.endpoint.host, self.endpoint.port, limit=MAX_BRIDGE_BYTES)
                 writer.write(raw)
                 await writer.drain()
                 line = await reader.readline()
                 return self._result(line, request_id)
         except (OSError, TimeoutError, ValueError) as exc:
-            raise BridgeError(f"{self.endpoint.name} bridge {op} at {self.endpoint.host}:{self.endpoint.port} failed: {exc}") from exc
+            reason = f"TimeoutError: no response within {request_timeout:g}s" if isinstance(exc, TimeoutError) else f"{type(exc).__name__}: {exc}"
+            raise BridgeError(f"{self.endpoint.name} bridge {op} at {self.endpoint.host}:{self.endpoint.port} failed: {reason}") from exc
         finally:
             if writer is not None:
                 writer.close()

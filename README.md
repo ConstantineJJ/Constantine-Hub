@@ -114,6 +114,22 @@ agent access. [Setup and verification](adapters/nvidia-app/README.md).
 
 ### Installing updates
 
+**0.5.6** fixes confirmed Godot stdio connection failures. Its investigation and
+acceptance limits are recorded in [the review report](docs/reviews/godot-mcp-2026-11-05-final.md).
+ReConnect remains opt-in: two failed connection checks precede the existing
+Restart, Restart, Stop/Doctor/Start sequence, repeated at most three times.
+While ReConnect is enabled it also restores a manually stopped Godot MCP.
+Turn ReConnect off first when you intend to keep MCP stopped. Turning it off
+cancels active recovery and scheduled retries; it never enables itself.
+Runtime Bridge availability is independent
+of tunnel/editor readiness; a stopped game does not require restarting the tunnel.
+There is no always-on Connection Holder. Tunnel readiness uses health, channel,
+command PID and observed terminal-exit evidence; it does not prove an MCP roundtrip.
+Owned Godot tunnel launches use `--mcp.max-concurrent-requests 1` to prevent the
+installed tunnel client's shared stdio response routing failure. This serializes
+Godot requests, including waiting behind a slow tool. External launchers must
+apply the same option themselves. See [the transport investigation](docs/reviews/godot-mcp-2026-11-05-transport-addendum.md).
+
 Use **Check Updates** to find a newer stable release. After confirmation Hub
 downloads the release ZIP/checksum and runs its Updater to replace and restart the
 application. Prereleases are ignored by the stable updater.
@@ -135,4 +151,4 @@ The existing GitHub Actions workflow builds the Hub/Updater, verifies the indepe
 Helper, exercises upgrade/recovery and packages the release. Source tests and CI
 remain in the repository; development reports and task logs are kept externally.
 
-Stable publication requires an explicitly approved manual workflow run after all checks. Main-branch builds do not publish a stable release automatically. v0.5.5 retains the update ZIP/checksum names understood by v0.5.4; the previous stable release is retained for upgrade verification.
+Stable publication requires an explicitly approved manual workflow run after all checks. Main-branch builds do not publish a stable release automatically. v0.5.6 retains the update ZIP/checksum names understood by v0.5.5; the previous stable release is retained for upgrade verification.

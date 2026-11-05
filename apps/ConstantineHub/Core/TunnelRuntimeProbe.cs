@@ -28,6 +28,7 @@ internal static class TunnelRuntimeProbe
         string profileName,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         TunnelProfile profile;
         try
         {
@@ -38,7 +39,9 @@ internal static class TunnelRuntimeProbe
             return new(TunnelRuntimeState.InvalidProfile, ex.Message);
         }
 
-        if (!await PortProbe.CanConnectAsync("127.0.0.1", profile.HealthPort, 500, cancellationToken))
+        var listening = await PortProbe.CanConnectAsync("127.0.0.1", profile.HealthPort, 500, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!listening)
             return new(
                 TunnelRuntimeState.Stopped,
                 $"Health port {profile.HealthPort} is not accepting TCP connections.",
@@ -93,10 +96,14 @@ internal static class TunnelRuntimeProbe
             {
                 // /readyz and probe_status may remain OK after the stdio child exits.
                 // Verify the advertised child too; tunnel identity alone is not MCP readiness.
-                if (!ready.IsSuccessStatusCode || !mainEnabled || probeStatus is not (null or "ok") || !IsProcessRunning(livePid))
+                var unavailable = !ready.IsSuccessStatusCode ? $"/readyz HTTP {(int)ready.StatusCode}" :
+                    !mainEnabled ? "main channel missing or disabled" :
+                    probeStatus is not (null or "ok") ? "main probe_status=" + probeStatus :
+                    !IsProcessRunning(livePid) ? "advertised command PID missing or exited: " + (livePid ?? "missing") : null;
+                if (unavailable is not null)
                     return new(TunnelRuntimeState.McpUnavailable,
-                        "Tunnel is running, but its MCP server is unavailable (child PID " + (livePid ?? "missing") +
-                        "). Restart the tunnel to restore MCP calls.", profile);
+                        "Tunnel is running, but MCP readiness failed: " + unavailable +
+                        ". Restart the tunnel to restore MCP calls.", profile);
                 return new(
                     TunnelRuntimeState.RunningExpected,
                     $"Expected tunnel is ready on {profile.ListenAddress}.",
@@ -108,6 +115,7 @@ internal static class TunnelRuntimeProbe
                 $"Port {profile.HealthPort} belongs to a different tunnel or MCP target.",
                 profile);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             return new(

@@ -65,6 +65,15 @@ async def main() -> None:
                 assert oversized.is_error and "budget" in oversized.content[0].text, oversized
                 after_error = await session.call_tool("godot_status", {})
                 assert not after_error.is_error, after_error
+                # Concurrent protocol traffic must keep request IDs/framing intact
+                # while a normal tool error remains local to its own response.
+                results = await asyncio.gather(
+                    *(session.list_tools() for _ in range(40)),
+                    session.call_tool("godot_inspect_node", {"node_path": ""}),
+                )
+                assert all({tool.name for tool in result.tools} >= EXPECTED_TOOLS for result in results[:-1])
+                assert results[-1].is_error
+                assert (await session.list_tools()).tools
 
         from godot_mcp.config import GodotSettings
         from godot_mcp.project_service import ProjectService
@@ -75,7 +84,7 @@ async def main() -> None:
             pass
         else:
             raise AssertionError("res:// path traversal was not blocked")
-        print(f"PASS: {len(EXPECTED_TOOLS)} Godot MCP tools registered; stdio initialize/list/call succeeded.")
+        print(f"PASS: {len(EXPECTED_TOOLS)} Godot MCP tools registered; stdio initialize/list/call, 40 concurrent requests and post-error recovery succeeded.")
 
 if __name__ == "__main__":
     asyncio.run(main())

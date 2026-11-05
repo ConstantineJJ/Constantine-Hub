@@ -114,6 +114,22 @@ agent access. [Setup and verification](adapters/nvidia-app/README.md).
 
 ### Installing updates
 
+The local **0.5.6-rc.1** candidate is unpublished. Its Godot investigation and
+acceptance limits are recorded in [the initial review](docs/reviews/godot-mcp-2026-11-05-initial.md).
+ReConnect remains opt-in: two failed connection checks precede the existing
+Restart, Restart, Stop/Doctor/Start sequence, repeated at most three times.
+While ReConnect is enabled it also restores a manually stopped Godot MCP.
+Turn ReConnect off first when you intend to keep MCP stopped. Turning it off
+cancels active recovery and scheduled retries; it never enables itself.
+Runtime Bridge availability is independent
+of tunnel/editor readiness; a stopped game does not require restarting the tunnel.
+There is no always-on Connection Holder. Tunnel readiness uses health, channel,
+command PID and observed terminal-exit evidence; it does not prove an MCP roundtrip.
+Owned Godot tunnel launches use `--mcp.max-concurrent-requests 1` to prevent the
+installed tunnel client's shared stdio response routing failure. This serializes
+Godot requests, including waiting behind a slow tool. External launchers must
+apply the same option themselves. See [the transport investigation](docs/reviews/godot-mcp-2026-11-05-transport-addendum.md).
+
 Use **Check Updates** to find a newer stable release. After confirmation Hub
 downloads the release ZIP/checksum and runs its Updater to replace and restart the
 application. Prereleases are ignored by the stable updater.

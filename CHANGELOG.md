@@ -5,6 +5,7 @@
 ### Fixed
 - Keep confirmed stdio command exits degraded even if the current tunnel still advertises a live wrapper PID and cached green health. A fresh owned process resets the failure; late output from an old process cannot affect its replacement.
 - Retain process ownership and abort replacement when Stop fails or exit is not confirmed. Application cleanup still attempts the remaining adapters.
+- Honor cancellation before process creation and after connection probes, preventing a canceled recovery Start from spawning a late tunnel.
 - Limit active Godot tunnel MCP workers to one to prevent confirmed shared-stdio response misrouting and upstream pipe closure. Other adapter launch settings remain unchanged.
 - Preserve editor/runtime bridge failure reasons in diagnostics; report connection/status timeouts instead of treating every missing runtime response as idle.
 - Describe the actual tunnel/editor recovery checks and runtime availability separately, without claiming an MCP roundtrip.

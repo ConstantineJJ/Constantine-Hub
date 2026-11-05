@@ -96,7 +96,9 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
 
     public virtual async Task StartAsync(CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var initial = await ProbeRuntimeAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         if (initial.State == TunnelRuntimeState.RunningExpected)
         {
             Log(_ownedTunnel.IsRunning
@@ -130,6 +132,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
                 ?? throw new FileNotFoundException(
                     "tunnel-client.exe was not found. Set CONSTANTINE_TUNNEL_CLIENT or install it in the known local path.");
 
+            cancellationToken.ThrowIfCancellationRequested();
             if (!_ownedTunnel.Start(executable, TunnelRunArguments))
                 throw new InvalidOperationException("tunnel-client process could not be started.");
         }

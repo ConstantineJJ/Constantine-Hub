@@ -109,6 +109,14 @@ internal static class TunnelLifecycleTests
             File.WriteAllText(profilePath, yaml);
             external.Kill();
             external.WaitForExit(3000);
+            using (var canceledStart = new TestAdapter())
+            using (var cancel = new CancellationTokenSource())
+            {
+                cancel.Cancel();
+                try { canceledStart.StartAsync(cancel.Token).GetAwaiter().GetResult(); throw new Exception("Canceled Start succeeded"); }
+                catch (OperationCanceledException) { }
+                Require(canceledStart.Pid is null, "pre-canceled Start does not create an owned tunnel");
+            }
             adapter.StartAsync().GetAwaiter().GetResult();
             var firstPid = adapter.Pid;
             Require(firstPid is not null && adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.Running, "Hub-owned Start reaches readiness");

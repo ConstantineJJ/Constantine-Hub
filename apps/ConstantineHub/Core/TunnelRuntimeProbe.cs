@@ -28,6 +28,7 @@ internal static class TunnelRuntimeProbe
         string profileName,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         TunnelProfile profile;
         try
         {
@@ -38,7 +39,9 @@ internal static class TunnelRuntimeProbe
             return new(TunnelRuntimeState.InvalidProfile, ex.Message);
         }
 
-        if (!await PortProbe.CanConnectAsync("127.0.0.1", profile.HealthPort, 500, cancellationToken))
+        var listening = await PortProbe.CanConnectAsync("127.0.0.1", profile.HealthPort, 500, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!listening)
             return new(
                 TunnelRuntimeState.Stopped,
                 $"Health port {profile.HealthPort} is not accepting TCP connections.",

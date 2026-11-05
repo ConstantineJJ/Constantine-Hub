@@ -2,6 +2,7 @@ using ConstantineHub.Adapters.Blender;
 using ConstantineHub.Adapters.Godot;
 using ConstantineHub.Adapters.LocalFiles;
 using ConstantineHub.Core;
+using System.Reflection;
 
 namespace ConstantineHub;
 
@@ -544,7 +545,6 @@ internal sealed partial class MainForm : Form
 
     private async Task StopAllOwnedAsync()
     {
-        StopReconnectForUserStop();
         Log("Stop Hub-Owned requested. External/adopted tunnels will be left untouched.");
         if (HelperInGlobalActions()) await RunAdapterActionQuietAsync("Stop MCP Helper", _helper.StopAsync);
         await RunAdapterActionQuietAsync("Stop Godot MCP", _godot.StopAsync);
@@ -558,7 +558,6 @@ internal sealed partial class MainForm : Form
         string title,
         Func<CancellationToken, Task> action)
     {
-        StopReconnectForUserAction(action);
         try
         {
             Log(title + " requested.");
@@ -581,7 +580,6 @@ internal sealed partial class MainForm : Form
         string title,
         Func<CancellationToken, Task> action)
     {
-        StopReconnectForUserAction(action);
         try
         {
             Log(title + " requested.");
@@ -855,6 +853,8 @@ internal sealed partial class MainForm : Form
 
     private static string GetDisplayVersion()
     {
+        var informational = typeof(MainForm).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational)) return informational.Split('+')[0];
         var version = typeof(MainForm).Assembly.GetName().Version;
         return version is null ? "0.1.0" : $"{version.Major}.{version.Minor}.{version.Build}";
     }

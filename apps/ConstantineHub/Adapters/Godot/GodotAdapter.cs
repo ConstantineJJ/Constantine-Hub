@@ -32,6 +32,10 @@ internal sealed class GodotAdapter : TunnelProfileAdapterBase
 
     public override string Id => "godot";
     public override string DisplayName => "Godot MCP";
+    // tunnel-client main stdio shares one reader. Parallel response forwarding
+    // can consume another request's ID and close the entire pipe (see review).
+    protected override IReadOnlyList<string> TunnelRunArguments =>
+        [.. base.TunnelRunArguments, "--mcp.max-concurrent-requests", "1"];
     internal GodotSettings Settings => _settings;
 
     internal async Task<GodotAdapterSnapshot> GetSnapshotAsync(CancellationToken cancellationToken = default)

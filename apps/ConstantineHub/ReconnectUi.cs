@@ -31,19 +31,6 @@ internal sealed partial class MainForm
         };
     }
 
-    private void StopReconnectForUserAction(Func<CancellationToken, Task> action)
-    {
-        if (action.Target is GodotAdapter && action.Method.Name == nameof(IHubAdapter.StopAsync))
-            StopReconnectForUserStop();
-    }
-
-    private void StopReconnectForUserStop()
-    {
-        if (_reconnect?.Enabled != true) return;
-        _reconnect.Disable();
-        Log("ReConnect disabled by explicit Godot Stop.");
-    }
-
     internal Control CreateReconnectButton()
     {
         _reconnectButton = new ReconnectButton

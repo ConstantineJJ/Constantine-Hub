@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using ConstantineHub.Adapters.Godot;
 using ConstantineHub.Core;
 
@@ -9,6 +10,11 @@ internal static class GodotDiagnosticsTests
 {
     internal static async Task RunAsync()
     {
+        using var godot = new GodotAdapter();
+        var arguments = (IReadOnlyList<string>)typeof(TunnelProfileAdapterBase)
+            .GetProperty("TunnelRunArguments", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(godot)!;
+        Check(arguments.SequenceEqual(new[] { "run", "--profile", godot.Settings.TunnelProfile, "--mcp.max-concurrent-requests", "1" }),
+            "Godot always launches one active MCP worker to prevent shared-stdio response misrouting");
         var snapshot = new GodotAdapterSnapshot(true, Path.GetTempPath(), new(true, true, "", "", "fixture"),
             true, null, true, false, "fixture", true,
             new("godot", "Godot MCP", AdapterState.Running, "fixture"), RuntimeBridgeIssue: "runtime timed out");

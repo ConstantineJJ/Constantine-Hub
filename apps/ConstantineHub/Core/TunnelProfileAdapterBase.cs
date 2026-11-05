@@ -15,6 +15,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
     }
 
     protected string ProfileName { get; }
+    protected virtual IReadOnlyList<string> TunnelRunArguments => ["run", "--profile", ProfileName];
     protected bool OwnsRunningTunnel => _ownedTunnel.IsRunning;
     protected int? OwnedTunnelPid => _ownedTunnel.ProcessId;
 
@@ -129,7 +130,7 @@ internal abstract class TunnelProfileAdapterBase : IHubAdapter, IDisposable
                 ?? throw new FileNotFoundException(
                     "tunnel-client.exe was not found. Set CONSTANTINE_TUNNEL_CLIENT or install it in the known local path.");
 
-            if (!_ownedTunnel.Start(executable, ["run", "--profile", ProfileName]))
+            if (!_ownedTunnel.Start(executable, TunnelRunArguments))
                 throw new InvalidOperationException("tunnel-client process could not be started.");
         }
 

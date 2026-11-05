@@ -78,6 +78,8 @@ internal static class TunnelLifecycleTests
             start.ArgumentList.Add("smoke-tunnel");
             external = Process.Start(start)!;
             using var adapter = new TestAdapter();
+            Require(adapter.Arguments.SequenceEqual(new[] { "run", "--profile", "smoke-tunnel" }),
+                "non-Godot tunnel launch arguments remain unchanged");
             WaitReady();
             Require(adapter.GetStatusAsync().GetAwaiter().GetResult().State == AdapterState.External, "pre-existing tunnel remains external");
             adapter.StartAsync().GetAwaiter().GetResult();
@@ -180,5 +182,6 @@ internal static class TunnelLifecycleTests
         public override string Id => "smoke";
         public override string DisplayName => "Smoke tunnel";
         internal int? Pid => OwnedTunnelPid;
+        internal IReadOnlyList<string> Arguments => TunnelRunArguments;
     }
 }

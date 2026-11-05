@@ -77,6 +77,59 @@ internal static class ReconnectTests
         Check(diagnosed.State == ReconnectState.Observing && messages.Count(m => m.Contains("restored")) == 1 &&
             messages.Last().Contains("tunnel/editor") && messages.Last().Contains("Runtime bridge: timed out"),
             "restoration logs exactly once and identifies the checks and separate runtime failure");
+
+        await DisablingScheduledWaitsAsync();
+
+        var isConnected = true;
+        var manualStopRecoveries = 0;
+        using var armed = new ReconnectFallback(_ => Task.FromResult(isConnected),
+            (_, _) => { manualStopRecoveries++; isConnected = true; return Task.CompletedTask; },
+            (_, _) => Task.CompletedTask);
+        armed.Enable();
+        await armed.CheckAsync();
+        isConnected = false; // Intentional Stop does not disarm an enabled fallback.
+        await armed.CheckAsync();
+        Check(armed.Enabled && isConnected && manualStopRecoveries == 1,
+            "armed ReConnect restores a manually stopped connection until explicitly disabled");
+        armed.Disable();
+        isConnected = false;
+        for (var tick = 0; tick < 3; tick++) await armed.CheckAsync();
+        Check(!armed.Enabled && manualStopRecoveries == 1,
+            "disabled ReConnect never rearms itself on subsequent timer checks");
+    }
+
+    private static async Task DisablingScheduledWaitsAsync()
+    {
+        foreach (var seconds in new[] { 5, 10 })
+        {
+            var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var recoveries = 0;
+            var checks = 0;
+            var logs = new List<string>();
+            using var fallback = new ReconnectFallback(_ => { checks++; return Task.FromResult(false); },
+                (_, _) => { recoveries++; return Task.CompletedTask; },
+                (duration, _) =>
+                {
+                    if (duration.TotalSeconds != seconds) return Task.CompletedTask;
+                    waiting.SetResult();
+                    // Deliberately ignore cancellation to exercise a late scheduled
+                    // continuation, not just Task.Delay's cooperative cancellation.
+                    return release.Task;
+                });
+            fallback.LogLine += logs.Add;
+            fallback.Enable();
+            var active = fallback.CheckAsync();
+            await waiting.Task;
+            fallback.Disable();
+            var beforeDisable = (recoveries, checks, logs.Count);
+            release.SetResult();
+            await active;
+            for (var tick = 0; tick < 3; tick++) await fallback.CheckAsync();
+            Check(!fallback.Enabled && fallback.Attempts == 0 && fallback.State == ReconnectState.Observing &&
+                (recoveries, checks, logs.Count) == beforeDisable && recoveries == (seconds == 5 ? 0 : 1),
+                $"manual disable cancels the pending {seconds}s wait; late continuation cannot probe, retry, log restoration or rearm");
+        }
     }
 
     private static void Check(bool ok, string message)

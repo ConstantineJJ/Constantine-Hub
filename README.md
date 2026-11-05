@@ -114,8 +114,8 @@ agent access. [Setup and verification](adapters/nvidia-app/README.md).
 
 ### Installing updates
 
-The local **0.5.6-rc.1** candidate is unpublished. Its Godot investigation and
-acceptance limits are recorded in [the initial review](docs/reviews/godot-mcp-2026-11-05-initial.md).
+**0.5.6** fixes confirmed Godot stdio connection failures. Its investigation and
+acceptance limits are recorded in [the review report](docs/reviews/godot-mcp-2026-11-05-final.md).
 ReConnect remains opt-in: two failed connection checks precede the existing
 Restart, Restart, Stop/Doctor/Start sequence, repeated at most three times.
 While ReConnect is enabled it also restores a manually stopped Godot MCP.
@@ -151,4 +151,4 @@ The existing GitHub Actions workflow builds the Hub/Updater, verifies the indepe
 Helper, exercises upgrade/recovery and packages the release. Source tests and CI
 remain in the repository; development reports and task logs are kept externally.
 
-Stable publication requires an explicitly approved manual workflow run after all checks. Main-branch builds do not publish a stable release automatically. v0.5.5 retains the update ZIP/checksum names understood by v0.5.4; the previous stable release is retained for upgrade verification.
+Stable publication requires an explicitly approved manual workflow run after all checks. Main-branch builds do not publish a stable release automatically. v0.5.6 retains the update ZIP/checksum names understood by v0.5.5; the previous stable release is retained for upgrade verification.

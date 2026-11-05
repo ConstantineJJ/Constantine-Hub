@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.6-rc.1 — unreleased candidate, 2026-11-05
+## 0.5.6 — 2026-11-05
 
 ### Fixed
 - Keep confirmed stdio command exits degraded even if the current tunnel still advertises a live wrapper PID and cached green health. A fresh owned process resets the failure; late output from an old process cannot affect its replacement.
@@ -12,7 +12,7 @@
 
 ### Validation
 - Controlled process-stop failures, stale-health/terminal-exit fixtures, late process output, ReConnect confirmation/exhaustion/cancellation, bridge timeout diagnostics, concurrent stdio requests and existing application regressions.
-- This candidate is not a published stable release. The original production pipe failure and full live Godot endurance remain separate acceptance work.
+- Reproduced the shared-stdio response routing failure against the installed tunnel client; one active Godot MCP worker delivered all responses correctly. Full live Godot endurance remains separate acceptance work.
 
 ## 0.5.5 — 2026-11-03
 

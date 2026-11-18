@@ -85,6 +85,27 @@ class GatewayTests(unittest.TestCase):
         state = json.loads(self.state.read_text(encoding="utf-8"))
         self.assertEqual((state["calls"], state["blocked"], state["last_tool"]), (2, 1, "list_skills"))
 
+    def test_switch_change_with_unchanged_mtime_is_honoured(self):
+        # File timestamps can be reused/coalesced on Windows. The on/off
+        # switch must follow contents, not just the metadata cache.
+        process = self.start()
+        self.request(process, 1, "initialize")
+        original_mtime = self.config.stat().st_mtime_ns
+
+        self.set_open(True)
+        os.utime(self.config, ns=(original_mtime, original_mtime))
+        opened = self.request(process, 2, "tools/call", {"name": "get_scene_info"})
+        self.assertEqual(opened["result"].get("echo"), "tools/call", opened)
+
+        self.set_open(False)
+        os.utime(self.config, ns=(original_mtime, original_mtime))
+        closed = self.request(process, 3, "tools/call", {"name": "delete_object"})
+        self.assertTrue(closed["result"].get("isError"), closed)
+        self.assertIn("CLAUDIUS_CHANNEL_CLOSED", closed["result"]["content"][0]["text"])
+
+        self.finish(process)
+        self.assertEqual(self.forwarded(), ["get_scene_info"])
+
     def test_unreadable_config_fails_closed(self):
         process = self.start()
         self.request(process, 1, "initialize")

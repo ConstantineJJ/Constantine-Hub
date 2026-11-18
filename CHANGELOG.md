@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.0 — 2026-11-18
+
+### Added
+- **Claudius MCP**: Claude Desktop's own channel to Blender MCP_Con, first on the dashboard above Local Files and first in Active MCP Bridges, with its own icon on the card, the bridge row and the Doctor window.
+- Stdio gateway `adapters/claudius-channel` (standard library only). ConHub's switch is re-read before every `tools/call`; a closed channel answers `CLAUDIUS_CHANNEL_CLOSED` locally and forwards nothing. Discovery keeps working, so reopening needs no Claude restart. Missing or unreadable switch fails closed.
+- One-entry Claude Desktop registration (`mcpServers.blender-mcp-con`) with a timestamped backup; all other settings are preserved and repeated registration is a no-op.
+- Gateway heartbeat with forwarded/refused call counters, client identity and live-process check shown on the card and in Doctor.
+
+### Changed
+- Claudius is independent of Jarvis tunnels: Start All, Stop Managed and external-tunnel protection never change it.
+- The Blender server command is taken from the Blender MCP tunnel profile, so both channels run the same server code.
+
+### Validation
+- Gateway regressions: closed-channel refusal without forwarding, live switch toggling, fail-closed unreadable config, missing server.
+- UI smoke: card order and icon, bridge row, four adapter Start actions, Claudius controls staying enabled while Jarvis tunnels are external, hermetic registration/backup/idempotency.
+
 ## 0.5.6 — 2026-11-05
 
 ### Fixed

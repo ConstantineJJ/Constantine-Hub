@@ -16,6 +16,7 @@ on:
       - 'adapters/godot-mcp/**'
       - 'adapters/mcp-helper/**'
       - 'adapters/nvidia-app/**'
+      - 'adapters/claudius-channel/**'
       - '.github/workflows/constantine-hub.yml'
       - 'global.json'
   pull_request:
@@ -26,6 +27,7 @@ on:
       - 'adapters/godot-mcp/**'
       - 'adapters/mcp-helper/**'
       - 'adapters/nvidia-app/**'
+      - 'adapters/claudius-channel/**'
       - '.github/workflows/constantine-hub.yml'
       - 'global.json'
 
@@ -69,6 +71,9 @@ jobs:
           python -m pip install -e adapters/godot-mcp
           python -m unittest discover -s adapters/godot-mcp/tests -p "test_*.py"
           python adapters/godot-mcp/tests/smoke_mcp.py
+
+      - name: Claudius channel gateway regressions
+        run: python -m unittest discover -s adapters/claudius-channel/tests -p "test_*.py" -v
 
       - name: Audit resolved runtime dependencies
         shell: pwsh
@@ -116,6 +121,9 @@ jobs:
           if (-not (Test-Path "$root/ConstantineHub.Updater.exe")) { throw 'Constantine Hub updater was not bundled.' }
           if (-not (Test-Path "$root/adapters/mcp-helper/McpHelper.exe")) { throw 'MCP Helper was not bundled.' }
           if (-not (Test-Path "$root/adapters/mcp-helper/package-manifest.json")) { throw 'MCP Helper manifest was not bundled.' }
+          foreach ($name in @('adapters/claudius-channel/claudius_gateway.py', 'adapters/claudius-channel/run_claudius_channel.cmd', 'ClaudiusIcon.png', 'ClaudiusIcon.ico')) {
+            if (-not (Test-Path "$root/$name")) { throw "Claudius channel file was not bundled: $name" }
+          }
 
       - name: Verify the six Jensen animation layers
         shell: pwsh

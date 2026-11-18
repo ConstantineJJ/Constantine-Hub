@@ -2,7 +2,7 @@
 
 # ConHub.
 
-A Windows control panel for **Local Files MCP, Blender MCP, Godot MCP, NVIDIA App MCP and MCP Helper**.
+A Windows control panel for **Claudius MCP, Local Files MCP, Blender MCP, Godot MCP, NVIDIA App MCP and MCP Helper**.
 Manage local connections, inspect their health and keep Hub updated from GitHub Releases.
 
 [Download the latest stable release](https://github.com/ConstantineJJ/Constantine-Hub/releases/latest)
@@ -19,6 +19,7 @@ Manage local connections, inspect their health and keep Hub updated from GitHub 
 
 | Module | Purpose |
 |---|---|
+| Claudius MCP | Claude Desktop's own switchable channel to Blender MCP_Con, independent of the tunnels |
 | Local Files MCP | Scoped local filesystem access and connection settings |
 | Blender MCP | Blender bridge/tunnel status, lifecycle and canonical Skills checks |
 | Godot MCP | Project/plugin setup, editor/runtime bridge status and connection lifecycle |
@@ -28,6 +29,25 @@ Manage local connections, inspect their health and keep Hub updated from GitHub 
 Connections started outside Hub remain **externally managed**. Hub does not take
 ownership of them or stop their processes. Start/Stop/Restart operate on owned
 instances; Doctor reports configuration and connection health.
+
+## Claudius MCP
+
+Claude Desktop connects to Blender MCP_Con through a small stdio gateway shipped in
+`adapters/claudius-channel`. Claude Desktop owns that process; ConHub owns only the
+switch (`%APPDATA%\ConstantineHub\claudius.json`), so the channel is independent of
+every tunnel, of **Start All** and of **Stop Managed**.
+
+1. Press **Start** on the Claudius MCP card. The first time, ConHub backs up Claude
+   Desktop's `claude_desktop_config.json` and registers `mcpServers.blender-mcp-con`
+   (no other key changes). Restart Claude Desktop once.
+2. **Stop** closes the channel immediately: Claude's tool calls are answered with
+   `CLAUDIUS_CHANNEL_CLOSED` and nothing reaches Blender or Tools_C. Discovery keeps
+   working, so **Start** reopens it without restarting Claude.
+3. **Doctor** shows the switch, registration, gateway heartbeat, call counters and the
+   shared Blender bridge. **Claude Setup** rewrites the registration explicitly.
+
+A missing or unreadable switch file fails closed. The Blender server command is taken
+from the Blender MCP tunnel profile, so Claude and the tunnel run the same server code.
 
 ## MCP Helper
 

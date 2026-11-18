@@ -105,6 +105,15 @@ internal static class UiPass
         var welcome = BuildWelcomeCard(form);
         dashboardFlow.Controls.Add(welcome);
 
+        // Claude's own channel sits first, above every Jarvis-facing adapter.
+        var claudiusHost = BuildAdapterHost(
+            form,
+            form.ClaudiusCard,
+            MainForm.ClaudiusTitle,
+            "C",
+            Color.FromArgb(244, 176, 52),
+            0,
+            toolTip);
         var localHost = BuildAdapterHost(
             form,
             localCard,
@@ -130,9 +139,11 @@ internal static class UiPass
             4,
             toolTip);
 
+        adapterCards.Add(claudiusHost);
         adapterCards.Add(localHost);
         adapterCards.Add(blenderHost);
         adapterCards.Add(godotHost);
+        dashboardFlow.Controls.Add(claudiusHost.Host);
         dashboardFlow.Controls.Add(localHost.Host);
         dashboardFlow.Controls.Add(blenderHost.Host);
         dashboardFlow.Controls.Add(godotHost.Host);

@@ -29,12 +29,12 @@ internal sealed partial class MainForm
         var shell = Controls.OfType<TableLayoutPanel>().First(p => p.ColumnCount == 3);
         var rail = shell.GetControlFromPosition(2, 1)!;
         var flow = rail.Controls.OfType<FlowLayoutPanel>().First();
-        var services = new TableLayoutPanel { Name = "ActiveBridges", ColumnCount = 1, RowCount = 5,
-            BackColor = Color.FromArgb(18, 26, 34), Height = S(310), Padding = new Padding(S(10)), Margin = new Padding(0, 0, 0, S(10)) };
+        var services = new TableLayoutPanel { Name = "ActiveBridges", ColumnCount = 1, RowCount = 6,
+            BackColor = Color.FromArgb(18, 26, 34), Height = S(378), Padding = new Padding(S(10)), Margin = new Padding(0, 0, 0, S(10)) };
         services.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         services.RowStyles.Add(new RowStyle(SizeType.Absolute, S(28)));
         services.Controls.Add(new Label { Text = "ACTIVE MCP BRIDGES", Dock = DockStyle.Fill, ForeColor = Warn, Font = new Font(Font, FontStyle.Bold) }, 0, 0);
-        var names = new[] { ("local-files", "Local Files"), ("blender", "Blender"), ("godot", "Godot"), ("mcp-helper", "MCP Helper") };
+        var names = new[] { (_claudius.Id, "Claudius"), ("local-files", "Local Files"), ("blender", "Blender"), ("godot", "Godot"), ("mcp-helper", "MCP Helper") };
         foreach (var (id, name) in names)
         {
             var row = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2, Margin = Padding.Empty };
@@ -42,14 +42,23 @@ internal sealed partial class MainForm
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, S(64)));
             row.RowStyles.Add(new RowStyle(SizeType.Absolute, S(25)));
             row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            row.Controls.Add(new Label { Text = name, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, 0);
+            var title = new Label { Text = name, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            if (id == _claudius.Id && LoadClaudiusGlyph(S(20)) is { } glyph)
+            {
+                title.Name = "rail-title-claudius";
+                title.Image = glyph; title.ImageAlign = ContentAlignment.MiddleLeft;
+                title.Padding = new Padding(S(24), 0, 0, 0);
+            }
+            row.Controls.Add(title, 0, 0);
             var stop = MakeButton("Stop", async (_, _) => await StopBridgeAsync(id));
             stop.Name = "rail-stop-" + id; stop.Dock = DockStyle.Fill; stop.Margin = new Padding(2); stop.Enabled = false; stop.Font = new Font("Segoe UI", 9F);
             row.Controls.Add(stop, 1, 0); row.SetRowSpan(stop, 2);
             var status = new Label { Text = "Checking…", Dock = DockStyle.Fill, AutoEllipsis = true, ForeColor = Muted, Font = new Font("Segoe UI", 8.5F) };
             row.Controls.Add(status, 0, 1);
             _bridgeRows[id] = (status, stop);
-            _tunnelActionTips.SetToolTip(stop, "Stop this Hub-owned MCP service. The editor and project remain open.");
+            _tunnelActionTips.SetToolTip(stop, id == _claudius.Id
+                ? "Close Claude's channel. Claude's tool calls are refused; Jarvis tunnels and Blender stay as they are."
+                : "Stop this Hub-owned MCP service. The editor and project remain open.");
             services.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
             services.Controls.Add(row, 0, services.Controls.Count);
         }
@@ -156,7 +165,7 @@ internal sealed partial class MainForm
 
     private async Task StopBridgeAsync(string id)
     {
-        var adapter = id switch { "local-files" => (IHubAdapter)_localFiles, "blender" => _blender, "godot" => _godot, _ => _helper };
+        var adapter = id switch { "claudius" => (IHubAdapter)_claudius, "local-files" => _localFiles, "blender" => _blender, "godot" => _godot, _ => _helper };
         if (_bridgeRows.TryGetValue(id, out var row)) row.Stop.Enabled = false;
         await RunAdapterActionAsync("Stop " + adapter.DisplayName, adapter.StopAsync);
         await RefreshStatusAsync();

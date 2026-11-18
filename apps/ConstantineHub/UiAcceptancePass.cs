@@ -34,6 +34,7 @@ internal static class UiAcceptancePass
 
         if (shell.GetControlFromPosition(1, 1) is FlowLayoutPanel dashboard)
         {
+            PolishAdapter(form, dashboard, MainForm.ClaudiusTitle, MainForm.ClaudiusIconAsset);
             PolishAdapter(form, dashboard, "LOCAL FILES MCP", "LocalFilesIcon.png", renameLocalSettings: true);
             PolishAdapter(form, dashboard, "BLENDER MCP", "BlenderIcon.png");
             PolishAdapter(form, dashboard, "GODOT MCP", "GodotIcon.png");

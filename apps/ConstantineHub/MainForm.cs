@@ -75,6 +75,7 @@ internal sealed partial class MainForm : Form
         _godot.LogLine += LogFromAnyThread;
         _nvidia.LogLine += LogFromAnyThread;
         _helper.LogLine += LogFromAnyThread;
+        _claudius.LogLine += LogFromAnyThread;
         _statusTimer.Tick += async (_, _) =>
         {
             if (_reconnect is not null) _ = _reconnect.CheckAsync();
@@ -107,6 +108,7 @@ internal sealed partial class MainForm : Form
         {
             Log($"ConHub. v{GetDisplayVersion()} started.");
             Log("Local Files MCP, Blender MCP and Godot MCP are managed adapters.");
+            Log("Claudius MCP is Claude's own switchable channel; Start All / Stop Managed never change it.");
             await RefreshStatusAsync();
             if (_enableTray) _ = CheckForUpdatesAsync(silentWhenCurrent: true);
         };
@@ -126,6 +128,8 @@ internal sealed partial class MainForm : Form
             _nvidia.Dispose();
             _helper.LogLine -= LogFromAnyThread;
             _helper.Dispose();
+            _claudius.LogLine -= LogFromAnyThread;
+            if (_claudiusCard is { Parent: null, IsDisposed: false }) _claudiusCard.Dispose();
         };
     }
 
@@ -176,6 +180,7 @@ internal sealed partial class MainForm : Form
         }, 0, 1);
         root.Controls.Add(header, 0, 0);
 
+        _ = ClaudiusCard; // hosted by the UI shell above Local Files; built with the other adapter cards
         root.Controls.Add(BuildLocalFilesCard(), 0, 1);
         root.Controls.Add(BuildBlenderCard(), 0, 2);
         root.Controls.Add(BuildGodotCard(), 0, 3);
@@ -264,7 +269,7 @@ internal sealed partial class MainForm : Form
 
     internal void UpdateTunnelActions(string id, AdapterState state)
     {
-        var controls = _tunnelActions[id];
+        if (!_tunnelActions.TryGetValue(id, out var controls)) return;
         var external = state == AdapterState.External;
         controls.Stop.Enabled = controls.Restart.Enabled = !external;
         controls.Status.Tag = external ? ExternalTunnelControlException.Guidance : null;
@@ -507,8 +512,10 @@ internal sealed partial class MainForm : Form
             UpdateTunnelActions(_godot.Id, godot.TunnelStatus.State);
             await RefreshNvidiaAsync();
             await RefreshHelperAsync();
+            await RefreshClaudiusAsync();
             SetStatus(_godotSkills, godot.SkillsOk, godot.SkillsSummary);
             _connections = [
+                new("Claudius", _latestClaudius?.Status.State ?? AdapterState.NotConfigured),
                 new("Local Files", local.State, SetupIssue: summary.ConfigValid ? null : summary.Message),
                 new("Blender", blender.TunnelStatus.State, blender.BridgeConnected,
                     blender.Skills.Success ? null : blender.Skills.Message),

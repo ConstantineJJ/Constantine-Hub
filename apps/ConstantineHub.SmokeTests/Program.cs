@@ -85,6 +85,7 @@ internal static class Program
             Environment.SetEnvironmentVariable("TUNNEL_CLIENT_PROFILE_FILE", null);
             GodotSettingsStore.Save(new GodotSettings(fixture, "smoke-godot", "tunnel_smoke", 8082,
                 "127.0.0.1", 6262, "127.0.0.1", 6263, null, fixture, false));
+            ClaudiusTests.Run(fixture);
             TestCanonicalKnowledge(fixture);
             GodotProjectTests.Run(fixture);
             WorkspaceFeaturesTests.FileHandling(fixture);
@@ -104,6 +105,7 @@ internal static class Program
             WorkspaceFeaturesTests.WindowBehavior(form);
             WorkspaceFeaturesTests.PreviewExit();
             WorkspaceFeaturesTests.Dashboard(form);
+            ClaudiusTests.Ui(form);
             WorkspaceFeaturesTests.FileWindow(form, fixture);
             Check(Descendants<Label>(form).Any(l => l.Text == "MCP CONNECTIONS"), "semantic connection card present");
             Check(!Descendants<Label>(form).Any(l => l.Text == "Needs attention"), "inactive bridges do not show generic program error");
@@ -122,7 +124,7 @@ internal static class Program
             var starts = Descendants<Button>(form).Where(b => b.Text == "Start" && !b.Name.StartsWith("nvidia-")).ToArray();
             var legacy = starts.Where(b => b.Tag is EventHandler).ToArray();
             var headers = starts.Where(b => b.Tag is null).ToArray();
-            Check(legacy.Length == 3 && headers.Length == 3, "three adapter Start actions");
+            Check(legacy.Length == 4 && headers.Length == 4, "four adapter Start actions including Claudius");
             for (var i = 0; i < headers.Length; i++)
             {
                 var calls = 0;
@@ -152,8 +154,11 @@ internal static class Program
 
             foreach (var id in new[] { "local-files", "blender", "godot" })
                 form.UpdateTunnelActions(id, AdapterState.External);
-            var protectedActions = Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart" && !b.Name.StartsWith("rail-") && !b.Name.StartsWith("nvidia-")).ToArray();
+            var protectedActions = Descendants<Button>(form).Where(b => b.Text is "Stop" or "Restart" && !b.Name.StartsWith("rail-") &&
+                !b.Name.StartsWith("nvidia-") && !b.Name.StartsWith("claudius-")).ToArray();
             Check(protectedActions.Length == 6 && protectedActions.All(b => !b.Enabled), "external tunnels disable Stop/Restart in all adapter cards");
+            Check(Descendants<Button>(form).Where(b => b.Name is "claudius-stop" or "claudius-restart").Count(b => b.Enabled) == 2,
+                "Claudius channel controls stay independent of external Jarvis tunnels");
             Check(Descendants<Label>(form).Count(l => l.Tag is string hint && hint == ExternalTunnelControlException.Guidance) == 3,
                 "each external tunnel has launcher/restart guidance");
             foreach (var action in protectedActions)

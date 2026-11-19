@@ -7,7 +7,8 @@ namespace ConstantineHub.Adapters.Claudius;
 internal sealed record ClaudiusSettings(
     [property: JsonPropertyName("schema_version")] int SchemaVersion,
     [property: JsonPropertyName("enabled")] bool Enabled,
-    [property: JsonPropertyName("server_command")] string ServerCommand)
+    [property: JsonPropertyName("server_command")] string ServerCommand,
+    [property: JsonPropertyName("restart_generation")] int RestartGeneration = 0)
 {
     internal static ClaudiusSettings Default => new(1, false, string.Empty);
 }
@@ -23,7 +24,11 @@ internal sealed record ClaudiusGatewayState(
     [property: JsonPropertyName("calls")] int Calls,
     [property: JsonPropertyName("blocked")] int Blocked,
     [property: JsonPropertyName("last_call_utc")] DateTimeOffset? LastCallUtc,
-    [property: JsonPropertyName("last_tool")] string? LastTool);
+    [property: JsonPropertyName("last_tool")] string? LastTool,
+    [property: JsonPropertyName("child_started_utc")] DateTimeOffset? ChildStartedUtc = null,
+    [property: JsonPropertyName("restarts")] int Restarts = 0,
+    [property: JsonPropertyName("restart_generation_applied")] int RestartGenerationApplied = 0,
+    [property: JsonPropertyName("restart_error")] string? RestartError = null);
 
 internal static class ClaudiusChannelStore
 {

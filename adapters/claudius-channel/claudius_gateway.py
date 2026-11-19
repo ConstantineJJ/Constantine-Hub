@@ -145,17 +145,60 @@ def closed_response(request_id: Any) -> dict[str, Any]:
     }
 
 
+RESTART_ID_PREFIX = "claudius-restart-"
+HANDSHAKE_SECONDS = 30.0
+
+
+def restart_generation(config: dict[str, Any]) -> int:
+    value = config.get("restart_generation", 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def spawn_child(config: dict[str, Any]) -> subprocess.Popen:
+    command, cwd = child_command(config)
+    env = dict(os.environ)
+    env.setdefault("PYTHONUNBUFFERED", "1")
+    env["CONHUB_CHANNEL"] = "claudius"
+    return subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=None, bufsize=0)
+
+
 class Gateway:
-    def __init__(self, channel: Channel, child: subprocess.Popen) -> None:
+    """Relays JSON-RPC and can replace its server process on a ConHub restart request.
+
+    A restart (``restart_generation`` raised in the channel config) is applied only while
+    no forwarded request is awaiting its response. The new server receives the client's
+    original ``initialize`` (answered internally, never shown to Claude) and
+    ``notifications/initialized`` before it serves traffic; the old one is then stopped.
+    If the handshake fails, the old server keeps serving and the error is recorded.
+    """
+
+    def __init__(self, channel: Channel, child: subprocess.Popen, generation: int) -> None:
         self.channel = channel
         self.child = child
         self.out_lock = threading.Lock()
+        self.child_lock = threading.RLock()
         self.stopping = threading.Event()
+        self.pending: set[str] = set()
+        self.applied_generation = generation
+        self.init_message: dict[str, Any] | None = None
+        self.handshakes: dict[str, threading.Event] = {}
 
     def send_client(self, data: bytes) -> None:
         with self.out_lock:
             sys.stdout.buffer.write(data)
             sys.stdout.buffer.flush()
+
+    def write_child(self, child: subprocess.Popen, message: Any) -> None:
+        stdin = child.stdin
+        assert stdin is not None
+        stdin.write((json.dumps(message) + "\n").encode("utf-8"))
+        stdin.flush()
+
+    def track(self, message: Any) -> None:
+        for item in message if isinstance(message, list) else [message]:
+            if isinstance(item, dict) and "method" in item and "id" in item:
+                self.pending.add(json.dumps(item["id"]))
 
     def filter_message(self, message: Any) -> Any | None:
         """Return what to forward to the server, answering closed tool calls locally."""
@@ -166,6 +209,7 @@ class Gateway:
             return message
         method = message.get("method")
         if method == "initialize":
+            self.init_message = dict(message)
             info = (message.get("params") or {}).get("clientInfo") or {}
             name = " ".join(str(info.get(k, "")) for k in ("name", "version")).strip() or None
             self.channel.update(client=name)
@@ -178,9 +222,52 @@ class Gateway:
             self.channel.count_call(tool, allowed=True)
         return message
 
+    def maybe_restart(self) -> None:
+        generation = restart_generation(self.channel.config())
+        if generation <= self.applied_generation or self.stopping.is_set():
+            return
+        with self.child_lock:
+            if self.pending or generation <= self.applied_generation:
+                return  # retried on the next message or heartbeat
+            self.applied_generation = generation
+            try:
+                child = spawn_child(self.channel.config())
+            except (OSError, FileNotFoundError) as error:
+                log(f"restart {generation} failed to spawn: {error}")
+                self.channel.update(restart_generation_applied=generation, restart_error=str(error))
+                return
+            threading.Thread(target=self.pump_server, args=(child,), daemon=True).start()
+            if self.init_message is not None:
+                key = RESTART_ID_PREFIX + str(generation)
+                done = self.handshakes[key] = threading.Event()
+                handshake = dict(self.init_message, id=key)
+                try:
+                    self.write_child(child, handshake)
+                    ok = done.wait(HANDSHAKE_SECONDS)
+                    if ok:
+                        self.write_child(child, {"jsonrpc": "2.0", "method": "notifications/initialized"})
+                except (OSError, ValueError):
+                    ok = False
+                self.handshakes.pop(key, None)
+                if not ok:
+                    log(f"restart {generation}: new server did not complete initialize; keeping pid {self.child.pid}")
+                    threading.Thread(target=stop_child, args=(child, 0.5), daemon=True).start()
+                    self.channel.update(restart_generation_applied=generation,
+                                        restart_error="new server did not complete initialize")
+                    return
+            old, self.child = self.child, child
+            restarts = int(self.channel.state.get("restarts") or 0) + 1
+            self.channel.update(child_pid=child.pid, child_started_utc=utc_now(), restarts=restarts,
+                                restart_generation_applied=generation, restart_error=None)
+            log(f"restart {generation}: server pid {old.pid} -> {child.pid}")
+        try:
+            if old.stdin:
+                old.stdin.close()
+        except OSError:
+            pass
+        threading.Thread(target=stop_child, args=(old,), daemon=True).start()
+
     def pump_client(self) -> None:
-        stdin = self.child.stdin
-        assert stdin is not None
         try:
             for line in sys.stdin.buffer:
                 if not line.strip():
@@ -188,37 +275,59 @@ class Gateway:
                 try:
                     message = json.loads(line)
                 except ValueError:
-                    stdin.write(line)  # let the server report malformed input itself
-                    stdin.flush()
+                    with self.child_lock:
+                        stdin = self.child.stdin
+                        assert stdin is not None
+                        stdin.write(line)  # let the server report malformed input itself
+                        stdin.flush()
                     continue
                 forward = self.filter_message(message)
                 if forward is None:
                     continue
-                stdin.write((json.dumps(forward) + "\n").encode("utf-8"))
-                stdin.flush()
+                self.maybe_restart()
+                with self.child_lock:
+                    self.track(forward)
+                    self.write_child(self.child, forward)
         except (OSError, ValueError):
             pass
         finally:
             self.stopping.set()
             try:
-                stdin.close()
+                with self.child_lock:
+                    if self.child.stdin:
+                        self.child.stdin.close()
             except OSError:
                 pass
 
-    def pump_server(self) -> None:
-        stdout = self.child.stdout
+    def pump_server(self, child: subprocess.Popen) -> None:
+        stdout = child.stdout
         assert stdout is not None
         try:
             for line in stdout:
+                try:
+                    message = json.loads(line)
+                except ValueError:
+                    message = None
+                if isinstance(message, dict) and "id" in message and "method" not in message:
+                    key = message["id"]
+                    if isinstance(key, str) and key in self.handshakes:
+                        self.handshakes[key].set()  # internal handshake: never shown to the client
+                        continue
+                    with self.child_lock:
+                        self.pending.discard(json.dumps(key))
+                if child is not self.child:
+                    continue  # a replaced server must not leak late output to the client
                 self.send_client(line)
         except (OSError, ValueError):
             pass
         finally:
-            self.stopping.set()
+            if child is self.child:
+                self.stopping.set()
 
     def heartbeat(self) -> None:
         while not self.stopping.wait(HEARTBEAT_SECONDS):
             self.channel.update(channel_open=self.channel.is_open())
+            self.maybe_restart()
 
 
 def stop_child(child: subprocess.Popen, grace: float = 5.0) -> int | None:
@@ -244,25 +353,23 @@ def main(argv: list[str] | None = None) -> int:
 
     channel = Channel(args.config.expanduser().resolve())
     try:
-        command, cwd = child_command(channel.config())
+        child = spawn_child(channel.config())
     except FileNotFoundError as error:
         log(str(error))
         channel.update(stopped_utc=utc_now(), child_exit_code=-1)
         return 2
 
-    env = dict(os.environ)
-    env.setdefault("PYTHONUNBUFFERED", "1")
-    env["CONHUB_CHANNEL"] = "claudius"
-    child = subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE, stderr=None, bufsize=0)
-    channel.update(child_pid=child.pid, channel_open=channel.is_open())
+    generation = restart_generation(channel.config())
+    channel.update(child_pid=child.pid, child_started_utc=utc_now(), channel_open=channel.is_open(),
+                   restarts=0, restart_generation_applied=generation, restart_error=None)
     log(f"started pid={os.getpid()} child={child.pid} channel_open={channel.is_open()}")
 
-    gateway = Gateway(channel, child)
-    for target in (gateway.pump_client, gateway.pump_server, gateway.heartbeat):
+    gateway = Gateway(channel, child, generation)
+    threading.Thread(target=gateway.pump_server, args=(child,), daemon=True).start()
+    for target in (gateway.pump_client, gateway.heartbeat):
         threading.Thread(target=target, daemon=True).start()
     gateway.stopping.wait()
-    code = stop_child(child)
+    code = stop_child(gateway.child)
     channel.update(stopped_utc=utc_now(), child_exit_code=code)
     log(f"stopped child_exit={code}")
     return 0 if code in (0, None) else int(code)

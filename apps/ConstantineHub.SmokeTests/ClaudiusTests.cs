@@ -55,6 +55,14 @@ internal static class ClaudiusTests
         Check(ClaudiusChannelStore.Load() is { Enabled: false } c && c.ServerCommand == server,
             "Stop only closes the switch and keeps the server command");
 
+        var generation = adapter.RestartServerAsync(TimeSpan.Zero).GetAwaiter().GetResult();
+        Check(generation == 1 && ClaudiusChannelStore.Load() is { RestartGeneration: 1, Enabled: false } r && r.ServerCommand == server,
+            "Restart Server raises restart_generation without opening the channel or changing the server");
+        adapter.StartAsync().GetAwaiter().GetResult();
+        adapter.StopAsync().GetAwaiter().GetResult();
+        Check(ClaudiusChannelStore.Load().RestartGeneration == 1, "Start/Stop preserve restart_generation");
+        Check(adapter.RestartServerAsync(TimeSpan.Zero).GetAwaiter().GetResult() == 2, "each Restart Server request is a new generation");
+
         var now = DateTimeOffset.UtcNow;
         var live = new ClaudiusGatewayState(Environment.ProcessId, null, now, now, null, "claude", 1, 0, now, "list_skills");
         Check(ClaudiusChannelStore.IsLive(live, now), "fresh heartbeat from a running process is live");
@@ -83,6 +91,8 @@ internal static class ClaudiusTests
               Descendants<Label>(form).Any(l => l.Name == "rail-title-claudius" && l.Image is not null),
             "Claudius appears with its icon in Active MCP Bridges");
         Check(MainForm.LoadClaudiusIcon() is not null, "Claudius .ico ships with the build for dialogs");
+        Check(Descendants<Button>(claudius).Count(b => b.Name == "claudius-restart-server" && b.Text == "Restart Server") == 1,
+            "Claudius card offers Restart Server for the MCP server process");
     }
 
     private static Control? FindDashboardHost(Control control)

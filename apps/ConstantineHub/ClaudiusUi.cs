@@ -32,6 +32,12 @@ internal sealed partial class MainForm
         AddTunnelActions(actions, _claudius, _claudiusChannel, "Claudius channel");
         _tunnelActions[_claudius.Id].Stop.Name = "claudius-stop";
         _tunnelActions[_claudius.Id].Restart.Name = "claudius-restart";
+        var restartServer = MakeButton("Restart Server", async (_, _) =>
+            await RunAdapterActionAsync("Restart Claudius MCP server process", async ct => await _claudius.RestartServerAsync(cancellationToken: ct)));
+        restartServer.Name = "claudius-restart-server";
+        _tunnelActionTips.SetToolTip(restartServer,
+            "Replace the blender_mcp_server.py process behind Claude's gateway (loads server changes; Claude Desktop stays open).");
+        actions.Controls.Add(restartServer);
         actions.Controls.Add(MakeButton("Doctor", async (_, _) => await ShowClaudiusDoctorAsync()));
         actions.Controls.Add(MakeButton("Claude Setup", async (_, _) =>
             await RunAdapterActionAsync("Register Claudius in Claude Desktop", _claudius.RepairRegistrationAsync)));

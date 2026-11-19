@@ -25,8 +25,9 @@ class GatewayTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def set_open(self, enabled, server=FAKE):
-        payload = {"schema_version": 1, "enabled": enabled, "server_command": str(server)}
+    def set_open(self, enabled, server=FAKE, restart_generation=0):
+        payload = {"schema_version": 1, "enabled": enabled, "server_command": str(server),
+                   "restart_generation": restart_generation}
         self.config.write_text(json.dumps(payload), encoding="utf-8")
         # Guarantee a new mtime even on coarse file-system clocks.
         stamp = time.time_ns() + 1_000_000
@@ -51,8 +52,11 @@ class GatewayTests(unittest.TestCase):
         process.stdout.close()
         process.stderr.close()
 
-    def forwarded(self):
+    def log_lines(self):
         return self.calls.read_text(encoding="utf-8").split() if self.calls.exists() else []
+
+    def forwarded(self):
+        return [line for line in self.log_lines() if line != "@initialize"]
 
     def test_closed_channel_answers_locally_and_discovery_still_works(self):
         process = self.start()
@@ -84,6 +88,31 @@ class GatewayTests(unittest.TestCase):
         self.assertEqual(self.forwarded(), ["get_scene_info", "list_skills"])
         state = json.loads(self.state.read_text(encoding="utf-8"))
         self.assertEqual((state["calls"], state["blocked"], state["last_tool"]), (2, 1, "list_skills"))
+
+    def test_restart_generation_replaces_server_process_and_replays_handshake(self):
+        process = self.start()
+        self.request(process, 1, "initialize", {"clientInfo": {"name": "claude-ai", "version": "1"}})
+        self.set_open(True)
+        first = self.request(process, 2, "tools/call", {"name": "get_scene_info"})["result"]["pid"]
+        self.set_open(True, restart_generation=1)
+        second = self.request(process, 3, "tools/call", {"name": "deployment_info"})["result"]
+        self.assertEqual(second["echo"], "tools/call")
+        self.assertNotEqual(second["pid"], first, "a new server process must answer after restart")
+        self.assertEqual(self.request(process, 4, "tools/list")["result"]["pid"], second["pid"])
+        self.finish(process)
+        self.assertEqual(self.log_lines(), ["@initialize", "get_scene_info", "@initialize", "deployment_info"])
+        state = json.loads(self.state.read_text(encoding="utf-8"))
+        self.assertEqual((state["restarts"], state["restart_generation_applied"]), (1, 1))
+        self.assertEqual(state["child_pid"], second["pid"])
+
+    def test_restart_generation_present_at_start_is_not_a_restart(self):
+        self.set_open(True, restart_generation=5)
+        process = self.start()
+        self.request(process, 1, "initialize")
+        self.request(process, 2, "tools/call", {"name": "get_scene_info"})
+        self.finish(process)
+        state = json.loads(self.state.read_text(encoding="utf-8"))
+        self.assertEqual((state["restarts"], state["restart_generation_applied"]), (0, 5))
 
     def test_unreadable_config_fails_closed(self):
         process = self.start()

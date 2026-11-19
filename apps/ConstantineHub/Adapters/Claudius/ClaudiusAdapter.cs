@@ -100,6 +100,42 @@ internal sealed class ClaudiusAdapter : IHubAdapter
         await StartAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Replace the Blender MCP server process behind the Claudius gateway (picks up a changed
+    /// blender_mcp_server.py without restarting Claude Desktop). ConHub only raises
+    /// <c>restart_generation</c>; the gateway that owns the process applies it when no request
+    /// is in flight, replays the MCP handshake and stops the old process.
+    /// </summary>
+    internal async Task<int> RestartServerAsync(TimeSpan? wait = null, CancellationToken cancellationToken = default)
+    {
+        var settings = ClaudiusChannelStore.Load();
+        var before = ClaudiusChannelStore.LoadState();
+        var target = Math.Max(settings.RestartGeneration, before?.RestartGenerationApplied ?? 0) + 1;
+        ClaudiusChannelStore.Save(settings with { RestartGeneration = target });
+        Log($"Claudius server restart requested (generation {target}); old server pid {before?.ChildPid?.ToString() ?? "unknown"}.");
+        if (!ClaudiusChannelStore.IsLive(before, DateTimeOffset.UtcNow))
+        {
+            Log("Claudius gateway is not running; the next Claude Desktop session starts a fresh server anyway.");
+            return target;
+        }
+
+        var deadline = DateTimeOffset.UtcNow + (wait ?? TimeSpan.FromSeconds(30));
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(500, cancellationToken);
+            var state = ClaudiusChannelStore.LoadState();
+            if (state is null || state.RestartGenerationApplied < target)
+                continue;
+            if (state.RestartError is not null)
+                Log("Claudius server restart failed, old server kept: " + state.RestartError);
+            else
+                Log($"Claudius server restarted: pid {before?.ChildPid} -> {state.ChildPid} (restarts this session: {state.Restarts}).");
+            return target;
+        }
+        Log("Claudius restart is queued: the gateway applies it once no Claude request is in flight (next call or heartbeat).");
+        return target;
+    }
+
     /// <summary>Explicit repair: rewrite the Claude Desktop entry even if the channel stays closed.</summary>
     internal Task RepairRegistrationAsync(CancellationToken cancellationToken = default)
     {
@@ -127,6 +163,9 @@ internal sealed class ClaudiusAdapter : IHubAdapter
             s.GatewayLive
                 ? $"Gateway: live pid {s.Gateway!.GatewayPid}, server pid {s.Gateway.ChildPid}, client {s.Gateway.Client ?? "unknown"}"
                 : "Gateway: not running (Claude Desktop closed, or restart it once after registration)",
+            s.Gateway is null ? "Server process: unknown"
+                : $"Server process: started {s.Gateway.ChildStartedUtc?.ToLocalTime():yyyy-MM-dd HH:mm:ss}, restarts {s.Gateway.Restarts}, generation {s.Gateway.RestartGenerationApplied}/{s.Settings.RestartGeneration}"
+                  + (s.Gateway.RestartError is null ? "" : " — last restart failed: " + s.Gateway.RestartError),
             s.Gateway is null ? "Activity: none recorded"
                 : $"Activity: {s.Gateway.Calls} forwarded, {s.Gateway.Blocked} refused, last {s.Gateway.LastTool ?? "—"} at {s.Gateway.LastCallUtc?.ToLocalTime():HH:mm:ss}",
             "",

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1 — 2026-11-19
+
+### Added
+- **Restart Server** on the Claudius MCP card: replaces the `blender_mcp_server.py` process behind Claude's gateway so server changes (`deployment_info.restart_required`) load without restarting Claude Desktop. ConHub raises `restart_generation` in `claudius.json`; the gateway that owns the process applies it only while no request is in flight, replays the client's MCP `initialize`/`initialized` to the new server, then stops the old one. A failed handshake keeps the old server and records `restart_error`.
+- Gateway state reports `child_started_utc`, `restarts`, `restart_generation_applied` and `restart_error`; Doctor shows them.
+
+### Notes
+- The existing Blender MCP **Restart** restarts the Jarvis tunnel profile only; Claude's server process is owned by the Claudius gateway. Gateways started before 0.6.1 need one Claude Desktop restart to load the new gateway.
+
 ## 0.6.0 — 2026-11-18
 
 ### Added

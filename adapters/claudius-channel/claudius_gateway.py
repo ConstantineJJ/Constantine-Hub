@@ -54,8 +54,6 @@ class Channel:
     def __init__(self, config_path: Path) -> None:
         self.config_path = config_path
         self.state_path = config_path.with_name("claudius-state.json")
-        self._mtime: int | None = None
-        self._config: dict[str, Any] = {}
         self._lock = threading.Lock()
         self.state: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
@@ -74,19 +72,14 @@ class Channel:
         }
 
     def config(self) -> dict[str, Any]:
+        # The switch is tiny and security-sensitive. Re-read it for each
+        # tools/call: Windows timestamps may be coalesced or preserved, and
+        # mtime-only caching can silently keep an obsolete open/closed state.
         try:
-            mtime = self.config_path.stat().st_mtime_ns
-        except OSError:
-            self._mtime, self._config = None, {}
-            return self._config
-        if mtime != self._mtime:
-            try:
-                loaded = json.loads(self.config_path.read_text(encoding="utf-8-sig"))
-                self._config = loaded if isinstance(loaded, dict) else {}
-            except (OSError, ValueError):
-                self._config = {}
-            self._mtime = mtime
-        return self._config
+            loaded = json.loads(self.config_path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            return {}
+        return loaded if isinstance(loaded, dict) else {}
 
     def is_open(self) -> bool:
         return self.config().get("enabled") is True
